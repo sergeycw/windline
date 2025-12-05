@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/windline/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/windline/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/windline",
+  "projects": {
+    "telegram-bot": {
+      "type": "application",
+      "root": "apps/telegram-bot",
+      "entryFile": "main",
+      "sourceRoot": "apps/telegram-bot/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/telegram-bot/tsconfig.app.json"
+      }
+    },
+    "windline": {
+      "type": "application",
+      "root": "apps/windline",
+      "entryFile": "main",
+      "sourceRoot": "apps/windline/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/windline/tsconfig.app.json"
+      }
+    }
+  }
+}
