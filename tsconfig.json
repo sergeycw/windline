@@ -21,6 +21,9 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "paths": {}
+    "paths": {
+      "@windline/config": ["libs/config/src"],
+      "@windline/config/*": ["libs/config/src/*"]
+    }
   }
 }
