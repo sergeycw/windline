@@ -5,6 +5,7 @@ import { telegramConfig } from '@windline/config';
 import { TelegramBotController } from './telegram-bot.controller';
 import { TelegramBotService } from './telegram-bot.service';
 import { BotUpdate } from './bot.update';
+import { GpxUploadService } from './gpx-upload.service';
 
 @Module({
   imports: [
@@ -20,6 +21,6 @@ import { BotUpdate } from './bot.update';
     }),
   ],
   controllers: [TelegramBotController],
-  providers: [TelegramBotService, BotUpdate],
+  providers: [TelegramBotService, BotUpdate, GpxUploadService],
 })
 export class TelegramBotModule {}

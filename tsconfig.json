@@ -23,7 +23,11 @@
     "noFallthroughCasesInSwitch": false,
     "paths": {
       "@windline/config": ["libs/config/src"],
-      "@windline/config/*": ["libs/config/src/*"]
+      "@windline/config/*": ["libs/config/src/*"],
+      "@windline/gpx": ["libs/gpx/src"],
+      "@windline/gpx/*": ["libs/gpx/src/*"],
+      "@windline/entities": ["libs/entities/src"],
+      "@windline/entities/*": ["libs/entities/src/*"]
     }
   }
 }
