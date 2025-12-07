@@ -1,6 +1,7 @@
 import StaticMaps from 'staticmaps';
 import sharp from 'sharp';
-import type { RenderMapInput, RenderMapOptions, RenderMapResult, WindMarkerData } from './map-renderer.types';
+import polyline from '@mapbox/polyline';
+import type { RenderMapInput, RenderMapOptions, RenderMapResult, RouteRenderData, WindMarkerData } from './map-renderer.types';
 import { createLegendSvg, getLegendHeight } from './legend-builder';
 
 const DEFAULT_WIDTH = 800;
@@ -33,7 +34,7 @@ export class MapRendererService {
       },
     });
 
-    this.addRouteLine(map, input.route.points);
+    this.addRouteLine(map, input.route);
     this.addWindMarkers(map, input.windMarkers);
     this.addStartFinishMarkers(map, input.route.points);
 
@@ -58,10 +59,17 @@ export class MapRendererService {
     };
   }
 
-  private addRouteLine(map: StaticMaps, points: Array<{ lat: number; lon: number }>): void {
-    if (points.length < 2) return;
+  private addRouteLine(map: StaticMaps, routeData: RouteRenderData): void {
+    let coords: [number, number][];
 
-    const coords = points.map((p) => [p.lon, p.lat]);
+    if (routeData.renderPolyline) {
+      const decoded = polyline.decode(routeData.renderPolyline);
+      coords = decoded.map(([lat, lon]) => [lon, lat]);
+    } else {
+      coords = routeData.points.map((p) => [p.lon, p.lat]);
+    }
+
+    if (coords.length < 2) return;
 
     map.addLine({
       coords,

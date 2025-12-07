@@ -29,6 +29,9 @@ export class Route {
   @Column({ type: 'jsonb' })
   points: RoutePoint[];
 
+  @Column({ type: 'text', nullable: true })
+  renderPolyline: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

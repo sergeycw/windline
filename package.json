@@ -23,6 +23,7 @@
     "test:e2e": "jest --config ./apps/windline/test/jest-e2e.json"
   },
   "dependencies": {
+    "@mapbox/polyline": "^1.2.1",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",

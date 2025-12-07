@@ -279,6 +279,7 @@ export class WeatherService {
     return this.mapRenderer.renderMap({
       route: {
         points: route.points,
+        renderPolyline: route.renderPolyline ?? undefined,
         name: route.name,
         distance: route.distance,
       },

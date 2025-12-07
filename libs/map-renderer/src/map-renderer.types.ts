@@ -2,6 +2,7 @@ import type { ForecastSummary, WindImpactData } from '@windline/entities';
 
 export interface RouteRenderData {
   points: Array<{ lat: number; lon: number }>;
+  renderPolyline?: string;
   name: string;
   distance: number;
 }

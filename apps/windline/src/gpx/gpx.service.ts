@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash } from 'crypto';
-import { GPX_PARSER, TogeojsonParser, optimizePoints } from '@windline/gpx';
+import { GPX_PARSER, TogeojsonParser, optimizePoints, createRenderPolyline } from '@windline/gpx';
 import type { ParsedRoute, OptimizeOptions } from '@windline/gpx';
 import { Route } from '@windline/entities';
 
@@ -36,6 +36,7 @@ export class GpxService {
     const parsed = this.gpxParser.parse(gpxContent);
     const name = parsed.name !== 'Unnamed Route' ? parsed.name : fileName || 'Unnamed Route';
 
+    const renderPolyline = createRenderPolyline(parsed.points);
     const optimizedPoints = optimizePoints(parsed.points, optimizeOptions);
 
     const route = this.routeRepository.create({
@@ -44,6 +45,7 @@ export class GpxService {
       hash,
       distance: parsed.distance,
       points: optimizedPoints,
+      renderPolyline,
     });
 
     await this.routeRepository.save(route);
