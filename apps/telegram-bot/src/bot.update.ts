@@ -3,6 +3,7 @@ import { Update, Ctx, Start, Help, On } from 'nestjs-telegraf';
 import { Context, Telegraf } from 'telegraf';
 import { InjectBot } from 'nestjs-telegraf';
 import { GpxUploadService } from './gpx-upload.service';
+import { WeatherApiService } from './weather-api.service';
 
 @Update()
 @Injectable()
@@ -10,6 +11,7 @@ export class BotUpdate {
   constructor(
     @InjectBot() private readonly bot: Telegraf<Context>,
     private readonly gpxUploadService: GpxUploadService,
+    private readonly weatherApiService: WeatherApiService,
   ) {}
 
   @Start()
@@ -78,5 +80,25 @@ export class BotUpdate {
       `📏 Distance: ${distanceKm} km\n` +
       `🔢 Points: ${route.pointsCount}`
     );
+
+    await ctx.reply('Fetching weather forecast...');
+
+    const forecastDate = new Date();
+    forecastDate.setDate(forecastDate.getDate() + 7);
+
+    const forecastResult = await this.weatherApiService.getForecast(
+      route.id,
+      forecastDate,
+      8,
+      10,
+    );
+
+    if (!forecastResult.success) {
+      await ctx.reply(`⚠️ Could not fetch weather: ${forecastResult.error}`);
+      return;
+    }
+
+    const forecastMessage = this.weatherApiService.formatForecast(forecastResult.data!);
+    await ctx.reply(forecastMessage);
   }
 }

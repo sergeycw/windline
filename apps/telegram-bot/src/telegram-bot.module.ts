@@ -4,6 +4,7 @@ import { TelegrafModule } from 'nestjs-telegraf';
 import { telegramConfig, validateTelegram } from '@windline/config';
 import { BotUpdate } from './bot.update';
 import { GpxUploadService } from './gpx-upload.service';
+import { WeatherApiService } from './weather-api.service';
 
 @Module({
   imports: [
@@ -19,6 +20,6 @@ import { GpxUploadService } from './gpx-upload.service';
       }),
     }),
   ],
-  providers: [BotUpdate, GpxUploadService],
+  providers: [BotUpdate, GpxUploadService, WeatherApiService],
 })
 export class TelegramBotModule {}
