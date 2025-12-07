@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { databaseConfig, redisConfig, validate } from '@windline/config';
+import { databaseConfig, redisConfig, validate, weatherConfig } from '@windline/config';
 import { Route } from '@windline/entities';
+import { WeatherModule } from '@windline/weather';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { GpxModule } from './gpx/gpx.module';
@@ -12,7 +13,7 @@ import { RoutesModule } from './routes/routes.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig, redisConfig],
+      load: [databaseConfig, redisConfig, weatherConfig],
       validate,
     }),
     TypeOrmModule.forRootAsync({
@@ -31,6 +32,7 @@ import { RoutesModule } from './routes/routes.module';
     }),
     GpxModule,
     RoutesModule,
+    WeatherModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],

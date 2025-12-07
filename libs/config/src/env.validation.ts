@@ -48,6 +48,14 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   NODE_ENV?: string;
+
+  @IsOptional()
+  @IsString()
+  WEATHER_PROVIDER?: string;
+
+  @IsOptional()
+  @IsString()
+  OPENWEATHERMAP_API_KEY?: string;
 }
 
 export class TelegramEnvironmentVariables extends EnvironmentVariables {

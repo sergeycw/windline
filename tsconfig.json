@@ -27,7 +27,9 @@
       "@windline/gpx": ["libs/gpx/src"],
       "@windline/gpx/*": ["libs/gpx/src/*"],
       "@windline/entities": ["libs/entities/src"],
-      "@windline/entities/*": ["libs/entities/src/*"]
+      "@windline/entities/*": ["libs/entities/src/*"],
+      "@windline/weather": ["libs/weather/src"],
+      "@windline/weather/*": ["libs/weather/src/*"]
     }
   }
 }
