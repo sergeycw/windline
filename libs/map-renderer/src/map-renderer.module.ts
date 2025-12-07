@@ -1,6 +1,6 @@
 import { Module, type DynamicModule } from '@nestjs/common';
-import { MapRendererService } from './map-renderer.service.js';
-import { MAP_RENDERER } from './map-renderer.types.js';
+import { MapRendererService } from './map-renderer.service';
+import { MAP_RENDERER } from './map-renderer.types';
 
 @Module({})
 export class MapRendererModule {

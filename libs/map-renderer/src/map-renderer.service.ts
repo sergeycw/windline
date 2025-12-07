@@ -1,7 +1,7 @@
 import StaticMaps from 'staticmaps';
 import sharp from 'sharp';
-import type { RenderMapInput, RenderMapOptions, RenderMapResult, WindMarkerData } from './map-renderer.types.js';
-import { createLegendSvg, getLegendHeight } from './legend-builder.js';
+import type { RenderMapInput, RenderMapOptions, RenderMapResult, WindMarkerData } from './map-renderer.types';
+import { createLegendSvg, getLegendHeight } from './legend-builder';
 
 const DEFAULT_WIDTH = 800;
 const DEFAULT_MAP_HEIGHT = 500;

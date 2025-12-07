@@ -1,1 +1,1 @@
-export * from './queue-jobs.types.js';
+export * from './queue-jobs.types';

@@ -1,4 +1,4 @@
-import type { ForecastRenderData, RouteRenderData } from './map-renderer.types.js';
+import type { ForecastRenderData, RouteRenderData } from './map-renderer.types';
 
 const LEGEND_HEIGHT = 80;
 const BG_COLOR = '#FFFFFF';
