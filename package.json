@@ -20,7 +20,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./apps/windline/test/jest-e2e.json"
+    "test:e2e": "jest --config ./apps/windline/test/jest-e2e.json",
+    "db:clear": "docker compose exec -T postgres psql -U windline -d windline -c \"TRUNCATE TABLE forecast_requests, routes CASCADE;\""
   },
   "dependencies": {
     "@mapbox/polyline": "^1.2.1",
@@ -33,6 +34,7 @@
     "@tmcw/togeojson": "^7.1.2",
     "@xmldom/xmldom": "^0.8.11",
     "bullmq": "^5.65.1",
+    "canvas": "^3.2.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "express": "^5.2.1",
@@ -71,6 +73,11 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp": "^0.34.5"
+    }
   },
   "jest": {
     "moduleFileExtensions": [

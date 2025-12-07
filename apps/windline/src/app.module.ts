@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
-import { databaseConfig, redisConfig, validate, weatherConfig } from '@windline/config';
+import { databaseConfig, redisConfig, validate, weatherConfig, mapRendererConfig } from '@windline/config';
 import { Route } from '@windline/entities';
 import { AppController } from './app.controller';
 import { GpxModule } from './gpx/gpx.module';
@@ -14,7 +14,7 @@ import { QueuesModule } from './queues/queues.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig, redisConfig, weatherConfig],
+      load: [databaseConfig, redisConfig, weatherConfig, mapRendererConfig],
       validate,
     }),
     TypeOrmModule.forRootAsync({

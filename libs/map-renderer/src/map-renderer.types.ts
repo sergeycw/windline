@@ -19,6 +19,7 @@ export interface WindMarkerData {
   lon: number;
   windDirection: number;
   windSpeed: number;
+  bearing: number;
 }
 
 export interface RenderMapInput {

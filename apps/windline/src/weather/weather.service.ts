@@ -274,7 +274,7 @@ export class WeatherService {
       throw new Error('Forecast data not available');
     }
 
-    const windMarkers = this.prepareWindMarkers(route.points, forecastRequest);
+    const windMarkers = this.prepareWindMarkers(route, forecastRequest);
 
     return this.mapRenderer.renderMap({
       route: {
@@ -293,28 +293,78 @@ export class WeatherService {
     });
   }
 
-  private prepareWindMarkers(
-    routePoints: RoutePoint[],
-    forecastRequest: ForecastRequest,
-  ): WindMarkerData[] {
-    const maxMarkers = 5;
-    const step = Math.max(1, Math.floor(routePoints.length / maxMarkers));
-    const markers: WindMarkerData[] = [];
+  private prepareWindMarkers(route: Route, forecastRequest: ForecastRequest): WindMarkerData[] {
+    const maxMarkers = 8
+    const avgWindDirection = this.calculateAverageWindDirection(forecastRequest)
+    const avgWindSpeed =
+      (forecastRequest.summary!.windSpeedMin + forecastRequest.summary!.windSpeedMax) / 2
 
-    const avgWindDirection = this.calculateAverageWindDirection(forecastRequest);
-    const avgWindSpeed = (forecastRequest.summary!.windSpeedMin + forecastRequest.summary!.windSpeedMax) / 2;
+    let pointsWithBearing: Array<{ lat: number; lon: number; bearing: number }>
 
-    for (let i = 0; i < routePoints.length && markers.length < maxMarkers; i += step) {
-      const point = routePoints[i];
-      markers.push({
-        lat: point.lat,
-        lon: point.lon,
-        windDirection: avgWindDirection,
-        windSpeed: avgWindSpeed,
-      });
+    if (route.renderPolyline) {
+      pointsWithBearing = this.samplePolylinePointsWithBearing(route.renderPolyline, maxMarkers)
+    } else {
+      pointsWithBearing = this.samplePointsArrayWithBearing(route.points, maxMarkers)
     }
 
-    return markers;
+    return pointsWithBearing.map((point) => ({
+      lat: point.lat,
+      lon: point.lon,
+      windDirection: avgWindDirection,
+      windSpeed: avgWindSpeed,
+      bearing: point.bearing,
+    }))
+  }
+
+  private samplePolylinePointsWithBearing(
+    encoded: string,
+    count: number,
+  ): Array<{ lat: number; lon: number; bearing: number }> {
+    const polyline = require('@mapbox/polyline')
+    const decoded: [number, number][] = polyline.decode(encoded)
+    const points = decoded.map(([lat, lon]) => ({ lat, lon }))
+
+    return this.samplePointsArrayWithBearing(points, count)
+  }
+
+  private samplePointsArrayWithBearing(
+    points: Array<{ lat: number; lon: number }>,
+    count: number,
+  ): Array<{ lat: number; lon: number; bearing: number }> {
+    if (points.length < 2) {
+      return points.map((p) => ({ ...p, bearing: 0 }))
+    }
+
+    const result: Array<{ lat: number; lon: number; bearing: number }> = []
+    const step = (points.length - 1) / (count - 1)
+
+    for (let i = 0; i < count; i++) {
+      const index = Math.min(Math.round(i * step), points.length - 1)
+      const point = points[index]
+      const nextIndex = Math.min(index + 1, points.length - 1)
+      const nextPoint = points[nextIndex]
+
+      const bearing = index === nextIndex ? (result.length > 0 ? result[result.length - 1].bearing : 0) : this.calculateBearing(point, nextPoint)
+
+      result.push({ lat: point.lat, lon: point.lon, bearing })
+    }
+
+    return result
+  }
+
+  private calculateBearing(
+    from: { lat: number; lon: number },
+    to: { lat: number; lon: number },
+  ): number {
+    const lat1 = (from.lat * Math.PI) / 180
+    const lat2 = (to.lat * Math.PI) / 180
+    const dLon = ((to.lon - from.lon) * Math.PI) / 180
+
+    const y = Math.sin(dLon) * Math.cos(lat2)
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
+
+    const bearing = (Math.atan2(y, x) * 180) / Math.PI
+    return (bearing + 360) % 360
   }
 
   private calculateAverageWindDirection(forecastRequest: ForecastRequest): number {
