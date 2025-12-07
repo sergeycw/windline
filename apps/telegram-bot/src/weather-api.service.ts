@@ -23,6 +23,12 @@ interface ForecastResult {
   error?: string;
 }
 
+interface ForecastImageResult {
+  success: boolean;
+  buffer?: Buffer;
+  error?: string;
+}
+
 @Injectable()
 export class WeatherApiService {
   private readonly logger = new Logger(WeatherApiService.name);
@@ -67,6 +73,38 @@ export class WeatherApiService {
       }
 
       return { success: false, error: 'Failed to fetch weather' };
+    }
+  }
+
+  async getForecastImage(
+    routeId: string,
+    date: Date,
+    startHour: number,
+    durationHours: number,
+  ): Promise<ForecastImageResult> {
+    try {
+      const response = await fetch(`${this.apiUrl}/weather/forecast/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          routeId,
+          date: formatDateISO(date),
+          startHour,
+          durationHours,
+        }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`Weather image API error: ${response.status}`);
+        return { success: false, error: 'Failed to generate map image' };
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return { success: true, buffer };
+    } catch (error) {
+      this.logger.error('Weather image fetch failed', error instanceof Error ? error.stack : error);
+      return { success: false, error: 'Failed to generate map' };
     }
   }
 

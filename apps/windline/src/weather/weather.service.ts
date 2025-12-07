@@ -11,6 +11,7 @@ import {
 import type { RoutePoint } from '@windline/gpx';
 import { Route, ForecastRequest, ForecastSummary } from '@windline/entities';
 import { sha256, CACHE_TTL_MS } from '@windline/common';
+import { MAP_RENDERER, type MapRendererService, type RenderMapResult, type WindMarkerData } from '@windline/map-renderer';
 import { ForecastRequestDto } from './dto/forecast-request.dto';
 
 export interface ProcessForecastResult {
@@ -26,6 +27,8 @@ export class WeatherService {
   constructor(
     @Inject(WEATHER_PROVIDER)
     private readonly weatherProvider: WeatherProvider,
+    @Inject(MAP_RENDERER)
+    private readonly mapRenderer: MapRendererService,
     @InjectRepository(Route)
     private readonly routeRepository: Repository<Route>,
     @InjectRepository(ForecastRequest)
@@ -253,5 +256,65 @@ export class WeatherService {
     const dLat = a.lat - b.lat;
     const dLon = a.lon - b.lon;
     return dLat * dLat + dLon * dLon;
+  }
+
+  async renderForecastMap(route: Route, forecastRequest: ForecastRequest): Promise<RenderMapResult> {
+    if (!forecastRequest.summary || !forecastRequest.windImpact) {
+      throw new Error('Forecast data not available');
+    }
+
+    const windMarkers = this.prepareWindMarkers(route.points, forecastRequest);
+
+    return this.mapRenderer.renderMap({
+      route: {
+        points: route.points,
+        name: route.name,
+        distance: route.distance,
+      },
+      forecast: {
+        summary: forecastRequest.summary,
+        windImpact: forecastRequest.windImpact,
+        date: forecastRequest.date,
+        startHour: forecastRequest.startHour,
+      },
+      windMarkers,
+    });
+  }
+
+  private prepareWindMarkers(
+    routePoints: RoutePoint[],
+    forecastRequest: ForecastRequest,
+  ): WindMarkerData[] {
+    const maxMarkers = 5;
+    const step = Math.max(1, Math.floor(routePoints.length / maxMarkers));
+    const markers: WindMarkerData[] = [];
+
+    const avgWindDirection = this.calculateAverageWindDirection(forecastRequest);
+    const avgWindSpeed = (forecastRequest.summary!.windSpeedMin + forecastRequest.summary!.windSpeedMax) / 2;
+
+    for (let i = 0; i < routePoints.length && markers.length < maxMarkers; i += step) {
+      const point = routePoints[i];
+      markers.push({
+        lat: point.lat,
+        lon: point.lon,
+        windDirection: avgWindDirection,
+        windSpeed: avgWindSpeed,
+      });
+    }
+
+    return markers;
+  }
+
+  private calculateAverageWindDirection(forecastRequest: ForecastRequest): number {
+    const impact = forecastRequest.windImpact!;
+    const headPct = impact.distribution.headwindPercent;
+    const tailPct = impact.distribution.tailwindPercent;
+
+    if (headPct > tailPct) {
+      return 180;
+    } else if (tailPct > headPct) {
+      return 0;
+    }
+    return 90;
   }
 }

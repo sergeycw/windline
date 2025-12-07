@@ -31,7 +31,9 @@
       "@windline/entities": ["libs/entities/src"],
       "@windline/entities/*": ["libs/entities/src/*"],
       "@windline/weather": ["libs/weather/src"],
-      "@windline/weather/*": ["libs/weather/src/*"]
+      "@windline/weather/*": ["libs/weather/src/*"],
+      "@windline/map-renderer": ["libs/map-renderer/src"],
+      "@windline/map-renderer/*": ["libs/map-renderer/src/*"]
     }
   }
 }

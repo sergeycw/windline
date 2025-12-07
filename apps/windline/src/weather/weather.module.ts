@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WeatherModule as WeatherLibModule } from '@windline/weather';
+import { MapRendererModule } from '@windline/map-renderer';
 import { Route, ForecastRequest } from '@windline/entities';
 import { WeatherService } from './weather.service';
 import { WeatherController } from './weather.controller';
@@ -8,6 +9,7 @@ import { WeatherController } from './weather.controller';
 @Module({
   imports: [
     WeatherLibModule.forRoot(),
+    MapRendererModule.register(),
     TypeOrmModule.forFeature([Route, ForecastRequest]),
   ],
   controllers: [WeatherController],

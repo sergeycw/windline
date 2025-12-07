@@ -36,6 +36,15 @@
       "compilerOptions": {
         "tsConfigPath": "libs/config/tsconfig.lib.json"
       }
+    },
+    "map-renderer": {
+      "type": "library",
+      "root": "libs/map-renderer",
+      "entryFile": "index",
+      "sourceRoot": "libs/map-renderer/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/map-renderer/tsconfig.lib.json"
+      }
     }
   }
 }

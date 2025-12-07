@@ -103,7 +103,18 @@ export class BotUpdate {
       return;
     }
 
-    const forecastMessage = this.weatherApiService.formatForecast(forecastResult.data!);
-    await ctx.reply(forecastMessage);
+    const imageResult = await this.weatherApiService.getForecastImage(
+      route.id,
+      forecastDate,
+      DEFAULT_FORECAST_START_HOUR,
+      DEFAULT_FORECAST_DURATION_HOURS,
+    );
+
+    if (imageResult.success && imageResult.buffer) {
+      await ctx.replyWithPhoto({ source: imageResult.buffer });
+    } else {
+      const forecastMessage = this.weatherApiService.formatForecast(forecastResult.data!);
+      await ctx.reply(forecastMessage);
+    }
   }
 }
