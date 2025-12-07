@@ -1,4 +1,5 @@
 import { RoutePoint } from './gpx-parser.interface';
+import { haversine, addBearingsToPoints } from './geo-utils';
 
 export interface OptimizeOptions {
   samplingDistanceMeters?: number;
@@ -16,7 +17,8 @@ export function optimizePoints(
   const precision = options.coordinatePrecision ?? DEFAULT_PRECISION;
 
   const sampled = downsample(points, samplingDistance);
-  return sampled.map((p) => roundCoordinates(p, precision));
+  const rounded = sampled.map((p) => roundCoordinates(p, precision));
+  return addBearingsToPoints(rounded);
 }
 
 function downsample(points: RoutePoint[], minDistanceMeters: number): RoutePoint[] {
@@ -62,16 +64,3 @@ function roundCoordinates(point: RoutePoint, precision: number): RoutePoint {
   return result;
 }
 
-function haversine(p1: RoutePoint, p2: RoutePoint): number {
-  const R = 6371000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-
-  const dLat = toRad(p2.lat - p1.lat);
-  const dLon = toRad(p2.lon - p1.lon);
-
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) * Math.sin(dLon / 2) ** 2;
-
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}

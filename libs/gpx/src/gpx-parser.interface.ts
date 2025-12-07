@@ -3,6 +3,7 @@ export interface RoutePoint {
   lon: number;
   ele?: number;
   time?: Date;
+  bearing?: number;
 }
 
 export interface ParsedRoute {
