@@ -49,6 +49,10 @@ export class WeatherController {
     );
 
     const summary = this.calculateSummary(forecastResponse.forecasts);
+    const windImpact = this.weatherService.calculateWindImpact(
+      route.points,
+      forecastResponse.forecasts,
+    );
 
     return {
       routeId: route.id,
@@ -57,6 +61,7 @@ export class WeatherController {
       startHour: dto.startHour,
       durationHours: dto.durationHours,
       summary,
+      windImpact,
       fetchedAt: forecastResponse.fetchedAt,
     };
   }

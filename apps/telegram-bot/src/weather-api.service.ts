@@ -13,6 +13,17 @@ interface ForecastSummary {
   precipitationTotal: number;
 }
 
+interface WindImpact {
+  headwind: number;
+  tailwind: number;
+  crosswind: number;
+  distribution: {
+    headwindPercent: number;
+    tailwindPercent: number;
+    crosswindPercent: number;
+  };
+}
+
 interface ForecastResponse {
   routeId: string;
   routeName: string;
@@ -20,6 +31,7 @@ interface ForecastResponse {
   startHour: number;
   durationHours: number;
   summary: ForecastSummary;
+  windImpact: WindImpact;
   fetchedAt: string;
 }
 
@@ -77,7 +89,7 @@ export class WeatherApiService {
   }
 
   formatForecast(forecast: ForecastResponse): string {
-    const { summary } = forecast;
+    const { summary, windImpact } = forecast;
     const date = new Date(forecast.date);
     const dateStr = date.toLocaleDateString('en-US', {
       weekday: 'short',
@@ -103,6 +115,18 @@ export class WeatherApiService {
     if (summary.precipitationTotal > 0) {
       lines.push(`💧 Expected: ${summary.precipitationTotal} mm`);
     }
+
+    lines.push('');
+    lines.push('🧭 Wind impact on route:');
+    lines.push(
+      `  ▲ Headwind: ${windImpact.distribution.headwindPercent}% (avg ${windImpact.headwind} km/h)`,
+    );
+    lines.push(
+      `  ▼ Tailwind: ${windImpact.distribution.tailwindPercent}% (avg ${windImpact.tailwind} km/h)`,
+    );
+    lines.push(
+      `  ◀▶ Crosswind: ${windImpact.distribution.crosswindPercent}% (avg ${windImpact.crosswind} km/h)`,
+    );
 
     return lines.join('\n');
   }

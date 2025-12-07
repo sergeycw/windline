@@ -30,6 +30,25 @@ export interface ForecastResponse {
   fetchedAt: Date;
 }
 
+export interface WindDistribution {
+  headwindPercent: number;
+  tailwindPercent: number;
+  crosswindPercent: number;
+}
+
+export interface WindImpact {
+  headwind: number;
+  tailwind: number;
+  crosswind: number;
+  distribution: WindDistribution;
+}
+
+export interface SegmentWindImpact {
+  headComponent: number;
+  crossComponent: number;
+  isHeadwind: boolean;
+}
+
 export function coordsKey(coords: Coordinates): string {
   return `${coords.lat.toFixed(WEATHER_COORD_PRECISION)},${coords.lon.toFixed(WEATHER_COORD_PRECISION)}`;
 }

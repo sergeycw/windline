@@ -18,11 +18,13 @@ interface OpenMeteoHourlyResponse {
   weather_code: number[];
 }
 
-interface OpenMeteoResponse {
+interface OpenMeteoSingleResponse {
   latitude: number;
   longitude: number;
   hourly: OpenMeteoHourlyResponse;
 }
+
+type OpenMeteoResponse = OpenMeteoSingleResponse | OpenMeteoSingleResponse[];
 
 const OPEN_METEO_API = 'https://api.open-meteo.com/v1/forecast';
 
@@ -41,6 +43,10 @@ export class OpenMeteoProvider implements WeatherProvider {
   async fetchForecast(request: ForecastRequest): Promise<ForecastResponse> {
     const { coordinates, date, startHour, durationHours } = request;
 
+    /**
+     * Deduplicate coordinates by coordsKey (0.01° grid).
+     * Store mapping from key to rounded coordinates.
+     */
     const uniqueCoords = new Map<string, { lat: number; lon: number }>();
     for (const coord of coordinates) {
       const key = coordsKey(coord);
@@ -52,45 +58,20 @@ export class OpenMeteoProvider implements WeatherProvider {
       }
     }
 
+    const coordsArray = Array.from(uniqueCoords.entries());
     const forecasts = new Map<string, HourlyForecast[]>();
 
-    const fetchPromises = Array.from(uniqueCoords.entries()).map(
-      async ([key, coord]) => {
-        const hourlyForecasts = await this.fetchSingleLocation(
-          coord.lat,
-          coord.lon,
-          date,
-          startHour,
-          durationHours,
-        );
-        return { key, hourlyForecasts };
-      },
-    );
-
-    const results = await Promise.all(fetchPromises);
-
-    for (const { key, hourlyForecasts } of results) {
-      forecasts.set(key, hourlyForecasts);
-    }
-
-    return {
-      forecasts,
-      fetchedAt: new Date(),
-    };
-  }
-
-  private async fetchSingleLocation(
-    lat: number,
-    lon: number,
-    date: Date,
-    startHour: number,
-    durationHours: number,
-  ): Promise<HourlyForecast[]> {
+    /**
+     * Open-Meteo supports batch requests with multiple coordinates.
+     * Single API call instead of N parallel requests.
+     */
     const dateStr = date.toISOString().split('T')[0];
+    const latitudes = coordsArray.map(([, c]) => c.lat).join(',');
+    const longitudes = coordsArray.map(([, c]) => c.lon).join(',');
 
     const url = new URL(OPEN_METEO_API);
-    url.searchParams.set('latitude', lat.toString());
-    url.searchParams.set('longitude', lon.toString());
+    url.searchParams.set('latitude', latitudes);
+    url.searchParams.set('longitude', longitudes);
     url.searchParams.set('hourly', HOURLY_PARAMS);
     url.searchParams.set('timezone', 'auto');
     url.searchParams.set('start_date', dateStr);
@@ -104,7 +85,26 @@ export class OpenMeteoProvider implements WeatherProvider {
 
     const data: OpenMeteoResponse = await response.json();
 
-    return this.parseHourlyData(data.hourly, startHour, durationHours);
+    /**
+     * Response is array when multiple coordinates, single object otherwise.
+     */
+    const responses = Array.isArray(data) ? data : [data];
+
+    for (let i = 0; i < coordsArray.length; i++) {
+      const [key] = coordsArray[i];
+      const locationData = responses[i];
+      const hourlyForecasts = this.parseHourlyData(
+        locationData.hourly,
+        startHour,
+        durationHours,
+      );
+      forecasts.set(key, hourlyForecasts);
+    }
+
+    return {
+      forecasts,
+      fetchedAt: new Date(),
+    };
   }
 
   private parseHourlyData(
