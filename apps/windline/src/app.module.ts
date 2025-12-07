@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
 import { databaseConfig, redisConfig, validate, weatherConfig } from '@windline/config';
 import { Route } from '@windline/entities';
 import { AppController } from './app.controller';
 import { GpxModule } from './gpx/gpx.module';
 import { RoutesModule } from './routes/routes.module';
 import { WeatherModule } from './weather/weather.module';
+import { QueuesModule } from './queues/queues.module';
 
 @Module({
   imports: [
@@ -29,9 +31,19 @@ import { WeatherModule } from './weather/weather.module';
         synchronize: process.env.NODE_ENV !== 'production',
       }),
     }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get('redis.host'),
+          port: configService.get('redis.port'),
+        },
+      }),
+    }),
     GpxModule,
     RoutesModule,
     WeatherModule,
+    QueuesModule,
   ],
   controllers: [AppController],
 })

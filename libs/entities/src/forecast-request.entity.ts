@@ -81,6 +81,12 @@ export class ForecastRequest {
   @Column({ type: 'text', nullable: true })
   error: string | null;
 
+  @Column({ type: 'bytea', nullable: true })
+  imageBuffer: Buffer | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  imageRenderedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -91,7 +91,7 @@ export class BotUpdate {
 
     const forecastDate = addDays(new Date(), DEFAULT_FORECAST_DAYS_AHEAD);
 
-    const forecastResult = await this.weatherApiService.getForecast(
+    const forecastResult = await this.weatherApiService.getForecastWithPolling(
       route.id,
       forecastDate,
       DEFAULT_FORECAST_START_HOUR,
@@ -103,18 +103,18 @@ export class BotUpdate {
       return;
     }
 
-    const imageResult = await this.weatherApiService.getForecastImage(
-      route.id,
-      forecastDate,
-      DEFAULT_FORECAST_START_HOUR,
-      DEFAULT_FORECAST_DURATION_HOURS,
-    );
+    const forecast = forecastResult.data!;
 
-    if (imageResult.success && imageResult.buffer) {
-      await ctx.replyWithPhoto({ source: imageResult.buffer });
-    } else {
-      const forecastMessage = this.weatherApiService.formatForecast(forecastResult.data!);
-      await ctx.reply(forecastMessage);
+    if (forecast.hasImage) {
+      const imageResult = await this.weatherApiService.getForecastImage(forecast.requestId);
+
+      if (imageResult.success && imageResult.buffer) {
+        await ctx.replyWithPhoto({ source: imageResult.buffer });
+        return;
+      }
     }
+
+    const forecastMessage = this.weatherApiService.formatForecast(forecast);
+    await ctx.reply(forecastMessage);
   }
 }

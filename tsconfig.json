@@ -33,7 +33,9 @@
       "@windline/weather": ["libs/weather/src"],
       "@windline/weather/*": ["libs/weather/src/*"],
       "@windline/map-renderer": ["libs/map-renderer/src"],
-      "@windline/map-renderer/*": ["libs/map-renderer/src/*"]
+      "@windline/map-renderer/*": ["libs/map-renderer/src/*"],
+      "@windline/queue-jobs": ["libs/queue-jobs/src"],
+      "@windline/queue-jobs/*": ["libs/queue-jobs/src/*"]
     }
   }
 }

@@ -45,6 +45,15 @@
       "compilerOptions": {
         "tsConfigPath": "libs/map-renderer/tsconfig.lib.json"
       }
+    },
+    "queue-jobs": {
+      "type": "library",
+      "root": "libs/queue-jobs",
+      "entryFile": "index",
+      "sourceRoot": "libs/queue-jobs/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/queue-jobs/tsconfig.lib.json"
+      }
     }
   }
 }

@@ -1,5 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import type { WeatherProvider, ForecastResponse, WindImpact, HourlyForecast, Coordinates } from '@windline/weather';
 import {
@@ -12,11 +14,18 @@ import type { RoutePoint } from '@windline/gpx';
 import { Route, ForecastRequest, ForecastSummary } from '@windline/entities';
 import { sha256, CACHE_TTL_MS } from '@windline/common';
 import { MAP_RENDERER, type MapRendererService, type RenderMapResult, type WindMarkerData } from '@windline/map-renderer';
+import { QUEUE_WEATHER_FETCH } from '@windline/queue-jobs';
 import { ForecastRequestDto } from './dto/forecast-request.dto';
 
 export interface ProcessForecastResult {
   forecastRequest: ForecastRequest;
   route: Route;
+  cached: boolean;
+}
+
+export interface EnqueueForecastResult {
+  requestId: string;
+  status: 'pending' | 'cached';
   cached: boolean;
 }
 
@@ -33,6 +42,8 @@ export class WeatherService {
     private readonly routeRepository: Repository<Route>,
     @InjectRepository(ForecastRequest)
     private readonly forecastRequestRepository: Repository<ForecastRequest>,
+    @InjectQueue(QUEUE_WEATHER_FETCH)
+    private readonly weatherFetchQueue: Queue,
   ) {}
 
   async getRouteById(routeId: string): Promise<Route | null> {
@@ -316,5 +327,113 @@ export class WeatherService {
       return 0;
     }
     return 90;
+  }
+
+  async enqueueForecastRequest(dto: ForecastRequestDto, route: Route): Promise<EnqueueForecastResult> {
+    const requestHash = this.createRequestHash(dto);
+
+    const cached = await this.findCachedForecast(requestHash);
+    if (cached) {
+      this.logger.debug(`Cache hit for request ${requestHash}`);
+      return { requestId: cached.id, status: 'cached', cached: true };
+    }
+
+    let forecastRequest = await this.forecastRequestRepository.findOne({
+      where: { requestHash },
+    });
+
+    if (!forecastRequest) {
+      forecastRequest = this.forecastRequestRepository.create({
+        routeId: dto.routeId,
+        userId: route.userId,
+        requestHash,
+        date: dto.date,
+        startHour: dto.startHour,
+        durationHours: dto.durationHours,
+        status: 'pending',
+      });
+      await this.forecastRequestRepository.save(forecastRequest);
+    }
+
+    await this.weatherFetchQueue.add('fetch', { requestId: forecastRequest.id }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+    });
+
+    this.logger.log(`Forecast request ${forecastRequest.id} enqueued`);
+    return { requestId: forecastRequest.id, status: 'pending', cached: false };
+  }
+
+  async getForecastRequestById(requestId: string): Promise<ForecastRequest | null> {
+    return this.forecastRequestRepository.findOne({
+      where: { id: requestId },
+      relations: ['route'],
+    });
+  }
+
+  async executeWeatherFetch(requestId: string): Promise<void> {
+    const forecastRequest = await this.forecastRequestRepository.findOne({
+      where: { id: requestId },
+      relations: ['route'],
+    });
+
+    if (!forecastRequest) {
+      throw new Error(`Forecast request ${requestId} not found`);
+    }
+
+    const route = forecastRequest.route;
+
+    forecastRequest.status = 'processing';
+    await this.forecastRequestRepository.save(forecastRequest);
+
+    try {
+      const forecastResponse = await this.getForecastForRoute(
+        route.points,
+        new Date(forecastRequest.date),
+        forecastRequest.startHour,
+        forecastRequest.durationHours,
+      );
+
+      const summary = this.calculateSummary(forecastResponse.forecasts);
+      const windImpact = this.calculateWindImpact(route.points, forecastResponse.forecasts);
+
+      forecastRequest.summary = summary;
+      forecastRequest.windImpact = windImpact;
+      forecastRequest.fetchedAt = forecastResponse.fetchedAt;
+      forecastRequest.error = null;
+
+      await this.forecastRequestRepository.save(forecastRequest);
+      this.logger.log(`Weather fetch completed for request ${requestId}`);
+    } catch (error) {
+      forecastRequest.status = 'failed';
+      forecastRequest.error = error instanceof Error ? error.message : 'Unknown error';
+      await this.forecastRequestRepository.save(forecastRequest);
+      throw error;
+    }
+  }
+
+  async executeImageRender(requestId: string): Promise<void> {
+    const forecastRequest = await this.forecastRequestRepository.findOne({
+      where: { id: requestId },
+      relations: ['route'],
+    });
+
+    if (!forecastRequest) {
+      throw new Error(`Forecast request ${requestId} not found`);
+    }
+
+    if (!forecastRequest.summary || !forecastRequest.windImpact) {
+      throw new Error(`Forecast data not available for request ${requestId}`);
+    }
+
+    const route = forecastRequest.route;
+    const result = await this.renderForecastMap(route, forecastRequest);
+
+    forecastRequest.imageBuffer = result.buffer;
+    forecastRequest.imageRenderedAt = new Date();
+    forecastRequest.status = 'completed';
+    await this.forecastRequestRepository.save(forecastRequest);
+
+    this.logger.log(`Image render completed for request ${requestId}`);
   }
 }
