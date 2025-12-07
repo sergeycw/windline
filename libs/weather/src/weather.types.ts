@@ -1,3 +1,6 @@
+export const WEATHER_SAMPLING_DISTANCE_METERS = 10000;
+export const WEATHER_COORD_PRECISION = 2;
+
 export interface Coordinates {
   lat: number;
   lon: number;
@@ -28,5 +31,5 @@ export interface ForecastResponse {
 }
 
 export function coordsKey(coords: Coordinates): string {
-  return `${coords.lat.toFixed(2)},${coords.lon.toFixed(2)}`;
+  return `${coords.lat.toFixed(WEATHER_COORD_PRECISION)},${coords.lon.toFixed(WEATHER_COORD_PRECISION)}`;
 }
