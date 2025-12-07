@@ -22,6 +22,8 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
+      "@windline/common": ["libs/common/src"],
+      "@windline/common/*": ["libs/common/src/*"],
       "@windline/config": ["libs/config/src"],
       "@windline/config/*": ["libs/config/src/*"],
       "@windline/gpx": ["libs/gpx/src"],

@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Context, Telegraf } from 'telegraf';
-
-const FETCH_TIMEOUT_MS = 30000;
+import { FETCH_TIMEOUT_MS } from '@windline/common';
 
 interface UploadResult {
   success: boolean;
@@ -27,7 +26,7 @@ export class GpxUploadService {
   private readonly apiUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.apiUrl = this.configService.get<string>('API_URL') || 'http://localhost:3000';
+    this.apiUrl = this.configService.getOrThrow<string>('API_URL');
   }
 
   async uploadFromTelegram(

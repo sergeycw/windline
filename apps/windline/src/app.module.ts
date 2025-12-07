@@ -4,7 +4,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { databaseConfig, redisConfig, validate, weatherConfig } from '@windline/config';
 import { Route } from '@windline/entities';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { GpxModule } from './gpx/gpx.module';
 import { RoutesModule } from './routes/routes.module';
 import { WeatherModule } from './weather/weather.module';
@@ -35,6 +34,5 @@ import { WeatherModule } from './weather/weather.module';
     WeatherModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}

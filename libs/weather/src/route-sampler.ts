@@ -3,22 +3,11 @@ import {
   coordsKey,
   WEATHER_SAMPLING_DISTANCE_METERS,
 } from './weather.types';
+import { haversine } from '@windline/gpx';
 
 interface PointLike {
   lat: number;
   lon: number;
-}
-
-const toRad = (deg: number): number => (deg * Math.PI) / 180;
-
-function haversine(p1: PointLike, p2: PointLike): number {
-  const R = 6371000;
-  const dLat = toRad(p2.lat - p1.lat);
-  const dLon = toRad(p2.lon - p1.lon);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 /**

@@ -1,38 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-
-const FETCH_TIMEOUT_MS = 30000;
-
-interface ForecastSummary {
-  temperatureMin: number;
-  temperatureMax: number;
-  windSpeedMin: number;
-  windSpeedMax: number;
-  windGustsMax: number;
-  precipitationProbabilityMax: number;
-  precipitationTotal: number;
-}
-
-interface WindImpact {
-  headwind: number;
-  tailwind: number;
-  crosswind: number;
-  distribution: {
-    headwindPercent: number;
-    tailwindPercent: number;
-    crosswindPercent: number;
-  };
-}
+import { FETCH_TIMEOUT_MS } from '@windline/common';
+import { formatDateISO } from '@windline/common';
+import type { ForecastSummary, WindImpactData } from '@windline/entities';
 
 interface ForecastResponse {
+  requestId: string;
   routeId: string;
   routeName: string;
   date: string;
   startHour: number;
   durationHours: number;
   summary: ForecastSummary;
-  windImpact: WindImpact;
+  windImpact: WindImpactData;
   fetchedAt: string;
+  cached: boolean;
 }
 
 interface ForecastResult {
@@ -47,7 +29,7 @@ export class WeatherApiService {
   private readonly apiUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.apiUrl = this.configService.get<string>('API_URL') || 'http://localhost:3000';
+    this.apiUrl = this.configService.getOrThrow<string>('API_URL');
   }
 
   async getForecast(
@@ -62,7 +44,7 @@ export class WeatherApiService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           routeId,
-          date: date.toISOString().split('T')[0],
+          date: formatDateISO(date),
           startHour,
           durationHours,
         }),

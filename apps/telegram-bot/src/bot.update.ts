@@ -4,6 +4,12 @@ import { Context, Telegraf } from 'telegraf';
 import { InjectBot } from 'nestjs-telegraf';
 import { GpxUploadService } from './gpx-upload.service';
 import { WeatherApiService } from './weather-api.service';
+import {
+  addDays,
+  DEFAULT_FORECAST_DAYS_AHEAD,
+  DEFAULT_FORECAST_START_HOUR,
+  DEFAULT_FORECAST_DURATION_HOURS,
+} from '@windline/common';
 
 @Update()
 @Injectable()
@@ -83,14 +89,13 @@ export class BotUpdate {
 
     await ctx.reply('Fetching weather forecast...');
 
-    const forecastDate = new Date();
-    forecastDate.setDate(forecastDate.getDate() + 7);
+    const forecastDate = addDays(new Date(), DEFAULT_FORECAST_DAYS_AHEAD);
 
     const forecastResult = await this.weatherApiService.getForecast(
       route.id,
       forecastDate,
-      8,
-      10,
+      DEFAULT_FORECAST_START_HOUR,
+      DEFAULT_FORECAST_DURATION_HOURS,
     );
 
     if (!forecastResult.success) {
