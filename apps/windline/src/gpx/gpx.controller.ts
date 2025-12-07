@@ -6,19 +6,15 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { GpxService } from './gpx.service';
-
-interface UploadGpxDto {
-  gpxContent: string;
-  userId: number;
-  fileName?: string;
-}
+import { UploadGpxDto } from './dto/upload-gpx.dto';
+import { ParseGpxDto } from './dto/parse-gpx.dto';
 
 @Controller('gpx')
 export class GpxController {
   constructor(private readonly gpxService: GpxService) {}
 
   @Post('upload')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.CREATED)
   async upload(@Body() dto: UploadGpxDto) {
     const result = await this.gpxService.upload(dto.gpxContent, dto.userId, dto.fileName);
     return {
@@ -32,7 +28,7 @@ export class GpxController {
 
   @Post('parse')
   @HttpCode(HttpStatus.OK)
-  parse(@Body() dto: { gpxContent: string }) {
+  parse(@Body() dto: ParseGpxDto) {
     const parsed = this.gpxService.parse(dto.gpxContent);
     return {
       name: parsed.name,

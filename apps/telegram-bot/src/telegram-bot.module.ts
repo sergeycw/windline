@@ -1,9 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TelegrafModule } from 'nestjs-telegraf';
-import { telegramConfig } from '@windline/config';
-import { TelegramBotController } from './telegram-bot.controller';
-import { TelegramBotService } from './telegram-bot.service';
+import { telegramConfig, validateTelegram } from '@windline/config';
 import { BotUpdate } from './bot.update';
 import { GpxUploadService } from './gpx-upload.service';
 
@@ -12,15 +10,15 @@ import { GpxUploadService } from './gpx-upload.service';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [telegramConfig],
+      validate: validateTelegram,
     }),
     TelegrafModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        token: configService.get<string>('telegram.token') || '',
+        token: configService.get<string>('telegram.token')!,
       }),
     }),
   ],
-  controllers: [TelegramBotController],
-  providers: [TelegramBotService, BotUpdate, GpxUploadService],
+  providers: [BotUpdate, GpxUploadService],
 })
 export class TelegramBotModule {}

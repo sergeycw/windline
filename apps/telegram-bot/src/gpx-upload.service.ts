@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Context, Telegraf } from 'telegraf';
+
+const FETCH_TIMEOUT_MS = 30000;
 
 interface UploadResult {
   success: boolean;
@@ -14,8 +16,14 @@ interface UploadResult {
   error?: string;
 }
 
+interface ApiErrorResponse {
+  message?: string;
+  statusCode?: number;
+}
+
 @Injectable()
 export class GpxUploadService {
+  private readonly logger = new Logger(GpxUploadService.name);
   private readonly apiUrl: string;
 
   constructor(private readonly configService: ConfigService) {
@@ -30,9 +38,12 @@ export class GpxUploadService {
   ): Promise<UploadResult> {
     try {
       const fileLink = await bot.telegram.getFileLink(fileId);
-      const response = await fetch(fileLink.href);
+      const response = await fetch(fileLink.href, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
 
       if (!response.ok) {
+        this.logger.warn(`Failed to download file from Telegram: ${response.status}`);
         return { success: false, error: 'Failed to download file from Telegram' };
       }
 
@@ -42,18 +53,50 @@ export class GpxUploadService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gpxContent, userId, fileName }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
 
       if (!apiResponse.ok) {
-        const errorText = await apiResponse.text();
-        return { success: false, error: `API error: ${errorText}` };
+        const errorData = await this.parseErrorResponse(apiResponse);
+        this.logger.warn(`API error: ${apiResponse.status} - ${errorData}`);
+        return { success: false, error: this.getUserFriendlyError(apiResponse.status, errorData) };
       }
 
       const data = await apiResponse.json();
       return { success: true, data };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
+      this.logger.error('Upload failed', error instanceof Error ? error.stack : error);
+
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        return { success: false, error: 'Request timed out. Please try again.' };
+      }
+
+      return { success: false, error: 'Something went wrong. Please try again later.' };
     }
+  }
+
+  private async parseErrorResponse(response: Response): Promise<string> {
+    try {
+      const data: ApiErrorResponse = await response.json();
+      return data.message || 'Unknown error';
+    } catch {
+      return await response.text();
+    }
+  }
+
+  private getUserFriendlyError(status: number, serverMessage: string): string {
+    if (status === 400) {
+      if (serverMessage.toLowerCase().includes('gpx')) {
+        return 'Invalid GPX file format. Please check your file.';
+      }
+      return 'Invalid request. Please try again.';
+    }
+    if (status === 413) {
+      return 'File is too large. Maximum size is 10MB.';
+    }
+    if (status >= 500) {
+      return 'Server error. Please try again later.';
+    }
+    return 'Something went wrong. Please try again.';
   }
 }

@@ -3,10 +3,37 @@ import * as toGeoJSON from '@tmcw/togeojson';
 import { GpxParser, ParsedRoute, RoutePoint } from './gpx-parser.interface';
 import { haversine } from './geo-utils';
 
+export class GpxParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GpxParseError';
+  }
+}
+
 export class TogeojsonParser implements GpxParser {
   parse(gpxContent: string): ParsedRoute {
-    const doc = new DOMParser().parseFromString(gpxContent, 'text/xml');
-    const geoJson = toGeoJSON.gpx(doc);
+    if (!gpxContent || typeof gpxContent !== 'string') {
+      throw new GpxParseError('GPX content is empty or invalid');
+    }
+
+    let doc: Document;
+    try {
+      doc = new DOMParser().parseFromString(gpxContent, 'text/xml');
+    } catch {
+      throw new GpxParseError('Failed to parse GPX: invalid XML');
+    }
+
+    const parseErrors = doc.getElementsByTagName('parsererror');
+    if (parseErrors.length > 0) {
+      throw new GpxParseError('Failed to parse GPX: invalid XML structure');
+    }
+
+    let geoJson: ReturnType<typeof toGeoJSON.gpx>;
+    try {
+      geoJson = toGeoJSON.gpx(doc);
+    } catch {
+      throw new GpxParseError('Failed to parse GPX: invalid GPX format');
+    }
 
     const points: RoutePoint[] = [];
     let name = 'Unnamed Route';
@@ -35,6 +62,10 @@ export class TogeojsonParser implements GpxParser {
           points.push(point);
         }
       }
+    }
+
+    if (points.length === 0) {
+      throw new GpxParseError('GPX file contains no route points');
     }
 
     const distance = this.calculateDistance(points);
