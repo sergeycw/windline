@@ -1,7 +1,5 @@
 export const FETCH_TIMEOUT_MS = 30000;
 
-export const DEFAULT_FORECAST_START_HOUR = 8;
 export const DEFAULT_FORECAST_DURATION_HOURS = 10;
-export const DEFAULT_FORECAST_DAYS_AHEAD = 7;
 
 export const CACHE_TTL_MS = 60 * 60 * 1000;

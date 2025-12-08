@@ -9,6 +9,7 @@ import { GpxModule } from './gpx/gpx.module';
 import { RoutesModule } from './routes/routes.module';
 import { WeatherModule } from './weather/weather.module';
 import { QueuesModule } from './queues/queues.module';
+import { RateLimitModule } from './rate-limit';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { QueuesModule } from './queues/queues.module';
         },
       }),
     }),
+    RateLimitModule,
     GpxModule,
     RoutesModule,
     WeatherModule,

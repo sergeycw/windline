@@ -24,9 +24,19 @@ interface ApiErrorResponse {
 export class GpxUploadService {
   private readonly logger = new Logger(GpxUploadService.name);
   private readonly apiUrl: string;
+  private readonly apiSecretKey: string | undefined;
 
   constructor(private readonly configService: ConfigService) {
     this.apiUrl = this.configService.getOrThrow<string>('API_URL');
+    this.apiSecretKey = this.configService.get<string>('API_SECRET_KEY');
+  }
+
+  private getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.apiSecretKey) {
+      headers['X-API-Key'] = this.apiSecretKey;
+    }
+    return headers;
   }
 
   async uploadFromTelegram(
@@ -50,7 +60,7 @@ export class GpxUploadService {
 
       const apiResponse = await fetch(`${this.apiUrl}/gpx/upload`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders(),
         body: JSON.stringify({ gpxContent, userId, fileName }),
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });

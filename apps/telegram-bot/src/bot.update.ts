@@ -1,13 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Update, Ctx, Start, Help, On } from 'nestjs-telegraf';
+import { Update, Ctx, Start, Help, On, Action } from 'nestjs-telegraf';
 import { Context, Telegraf } from 'telegraf';
 import { InjectBot } from 'nestjs-telegraf';
 import { GpxUploadService } from './gpx-upload.service';
 import { WeatherApiService } from './weather-api.service';
+
+interface InlineKeyboardButton {
+  text: string;
+  callback_data: string;
+}
 import {
   addDays,
-  DEFAULT_FORECAST_DAYS_AHEAD,
-  DEFAULT_FORECAST_START_HOUR,
+  formatDateISO,
   DEFAULT_FORECAST_DURATION_HOURS,
 } from '@windline/common';
 
@@ -36,6 +40,60 @@ export class BotUpdate {
     } catch (error) {
       this.logger.error(`Failed to send photo: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  private async safeReplyWithMarkup(
+    ctx: Context,
+    text: string,
+    buttons: InlineKeyboardButton[][],
+  ): Promise<void> {
+    try {
+      await ctx.reply(text, { reply_markup: { inline_keyboard: buttons } });
+    } catch (error) {
+      this.logger.error(`Failed to send message with markup: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private generateDateButtons(routeId: string): InlineKeyboardButton[][] {
+    const buttons: InlineKeyboardButton[][] = [];
+    const today = new Date();
+
+    let currentRow: InlineKeyboardButton[] = [];
+    for (let i = 0; i < 16; i++) {
+      const date = addDays(today, i);
+      const dayName = date.toLocaleDateString('ru', { weekday: 'short' });
+      const dayNum = date.getDate();
+
+      currentRow.push({
+        text: `${dayName} ${dayNum}`,
+        callback_data: `date:${routeId}:${formatDateISO(date)}`,
+      });
+
+      if (date.getDay() === 0 || currentRow.length === 7) {
+        buttons.push(currentRow);
+        currentRow = [];
+      }
+    }
+    if (currentRow.length > 0) {
+      buttons.push(currentRow);
+    }
+    return buttons;
+  }
+
+  private generateTimeButtons(routeId: string, date: string): InlineKeyboardButton[][] {
+    const buttons: InlineKeyboardButton[][] = [];
+    for (let row = 0; row < 4; row++) {
+      const rowButtons: InlineKeyboardButton[] = [];
+      for (let col = 0; col < 6; col++) {
+        const hour = row * 6 + col;
+        rowButtons.push({
+          text: `${hour}:00`,
+          callback_data: `time:${routeId}:${date}:${hour}`,
+        });
+      }
+      buttons.push(rowButtons);
+    }
+    return buttons;
   }
 
   @Start()
@@ -107,14 +165,43 @@ export class BotUpdate {
       `🔢 Points: ${route.pointsCount}`
     );
 
+    const buttons = this.generateDateButtons(route.id);
+    await this.safeReplyWithMarkup(ctx, 'Select forecast date:', buttons);
+  }
+
+  @Action(/^date:(.+):(.+)$/)
+  async onDateSelect(@Ctx() ctx: Context) {
+    if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
+
+    const match = ctx.callbackQuery.data.match(/^date:(.+):(.+)$/);
+    if (!match) return;
+
+    const [, routeId, dateStr] = match;
+
+    await ctx.answerCbQuery();
+
+    const buttons = this.generateTimeButtons(routeId, dateStr);
+    await this.safeReplyWithMarkup(ctx, 'Select start time:', buttons);
+  }
+
+  @Action(/^time:(.+):(.+):(\d+)$/)
+  async onTimeSelect(@Ctx() ctx: Context) {
+    if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
+
+    const match = ctx.callbackQuery.data.match(/^time:(.+):(.+):(\d+)$/);
+    if (!match) return;
+
+    const [, routeId, dateStr, startHourStr] = match;
+    const startHour = parseInt(startHourStr, 10);
+    const date = new Date(dateStr);
+
+    await ctx.answerCbQuery();
     await this.safeReply(ctx, 'Fetching weather forecast...');
 
-    const forecastDate = addDays(new Date(), DEFAULT_FORECAST_DAYS_AHEAD);
-
     const forecastResult = await this.weatherApiService.getForecastWithPolling(
-      route.id,
-      forecastDate,
-      DEFAULT_FORECAST_START_HOUR,
+      routeId,
+      date,
+      startHour,
       DEFAULT_FORECAST_DURATION_HOURS,
     );
 

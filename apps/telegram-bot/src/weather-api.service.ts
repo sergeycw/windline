@@ -50,9 +50,22 @@ const DEFAULT_POLL_OPTIONS: PollOptions = {
 export class WeatherApiService {
   private readonly logger = new Logger(WeatherApiService.name);
   private readonly apiUrl: string;
+  private readonly apiSecretKey: string | undefined;
 
   constructor(private readonly configService: ConfigService) {
     this.apiUrl = this.configService.getOrThrow<string>('API_URL');
+    this.apiSecretKey = this.configService.get<string>('API_SECRET_KEY');
+  }
+
+  private getHeaders(contentType?: string): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (contentType) {
+      headers['Content-Type'] = contentType;
+    }
+    if (this.apiSecretKey) {
+      headers['X-API-Key'] = this.apiSecretKey;
+    }
+    return headers;
   }
 
   async createForecastRequest(
@@ -64,7 +77,7 @@ export class WeatherApiService {
     try {
       const response = await fetch(`${this.apiUrl}/weather/forecast`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeaders('application/json'),
         body: JSON.stringify({
           routeId,
           date: formatDateISO(date),
@@ -97,6 +110,7 @@ export class WeatherApiService {
     try {
       const response = await fetch(`${this.apiUrl}/weather/forecast/${requestId}`, {
         method: 'GET',
+        headers: this.getHeaders(),
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
 
@@ -168,6 +182,7 @@ export class WeatherApiService {
     try {
       const response = await fetch(`${this.apiUrl}/weather/forecast/${requestId}/image`, {
         method: 'GET',
+        headers: this.getHeaders(),
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
 

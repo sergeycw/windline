@@ -43,6 +43,22 @@ export class OpenMeteoProvider implements WeatherProvider {
   async fetchForecast(request: ForecastRequest): Promise<ForecastResponse> {
     const { coordinates, date, startHour, durationHours } = request;
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const requestDate = new Date(date);
+    requestDate.setHours(0, 0, 0, 0);
+
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + 16);
+
+    if (requestDate < today) {
+      throw new Error('Historical forecasts are not supported');
+    }
+    if (requestDate > maxDate) {
+      throw new Error('Forecast is only available up to 16 days ahead');
+    }
+
     /**
      * Deduplicate coordinates by coordsKey (0.01° grid).
      * Store mapping from key to rounded coordinates.

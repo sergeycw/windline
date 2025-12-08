@@ -1,10 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash } from 'crypto';
 import { GPX_PARSER, TogeojsonParser, optimizePoints, createRenderPolyline } from '@windline/gpx';
 import type { ParsedRoute, OptimizeOptions } from '@windline/gpx';
 import { Route } from '@windline/entities';
+import { RateLimitService } from '../rate-limit';
 
 export interface UploadResult {
   route: Route;
@@ -18,6 +19,7 @@ export class GpxService {
     private readonly gpxParser: TogeojsonParser,
     @InjectRepository(Route)
     private readonly routeRepository: Repository<Route>,
+    private readonly rateLimitService: RateLimitService,
   ) {}
 
   async upload(
@@ -31,6 +33,14 @@ export class GpxService {
     const existing = await this.routeRepository.findOne({ where: { hash } });
     if (existing) {
       return { route: existing, isNew: false };
+    }
+
+    const { allowed, limit } = await this.rateLimitService.checkAndIncrement(userId);
+    if (!allowed) {
+      throw new HttpException(
+        `Daily upload limit exceeded (${limit} routes/day)`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     const parsed = this.gpxParser.parse(gpxContent);
