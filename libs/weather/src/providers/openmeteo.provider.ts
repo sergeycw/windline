@@ -1,3 +1,4 @@
+import { MAX_FORECAST_DAYS } from '@windline/common';
 import { WeatherProvider } from '../weather-provider.interface';
 import {
   ForecastRequest,
@@ -50,13 +51,13 @@ export class OpenMeteoProvider implements WeatherProvider {
     requestDate.setHours(0, 0, 0, 0);
 
     const maxDate = new Date(today);
-    maxDate.setDate(maxDate.getDate() + 16);
+    maxDate.setDate(maxDate.getDate() + MAX_FORECAST_DAYS);
 
     if (requestDate < today) {
       throw new Error('Historical forecasts are not supported');
     }
     if (requestDate > maxDate) {
-      throw new Error('Forecast is only available up to 16 days ahead');
+      throw new Error(`Forecast is only available up to ${MAX_FORECAST_DAYS} days ahead`);
     }
 
     /**

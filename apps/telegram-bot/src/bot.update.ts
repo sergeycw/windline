@@ -13,6 +13,7 @@ import {
   addDays,
   formatDateISO,
   DEFAULT_FORECAST_DURATION_HOURS,
+  MAX_FORECAST_DAYS,
 } from '@windline/common';
 
 @Update()
@@ -59,7 +60,7 @@ export class BotUpdate {
     const today = new Date();
 
     let currentRow: InlineKeyboardButton[] = [];
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < MAX_FORECAST_DAYS; i++) {
       const date = addDays(today, i);
       const dayName = date.toLocaleDateString('ru', { weekday: 'short' });
       const dayNum = date.getDate();
