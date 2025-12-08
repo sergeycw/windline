@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Update, Ctx, Start, Help, On } from 'nestjs-telegraf';
 import { Context, Telegraf } from 'telegraf';
 import { InjectBot } from 'nestjs-telegraf';
@@ -14,20 +14,39 @@ import {
 @Update()
 @Injectable()
 export class BotUpdate {
+  private readonly logger = new Logger(BotUpdate.name);
+
   constructor(
     @InjectBot() private readonly bot: Telegraf<Context>,
     private readonly gpxUploadService: GpxUploadService,
     private readonly weatherApiService: WeatherApiService,
   ) {}
 
+  private async safeReply(ctx: Context, text: string): Promise<void> {
+    try {
+      await ctx.reply(text);
+    } catch (error) {
+      this.logger.error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private async safeReplyWithPhoto(ctx: Context, source: Buffer, caption?: string): Promise<void> {
+    try {
+      await ctx.replyWithPhoto({ source }, caption ? { caption } : undefined);
+    } catch (error) {
+      this.logger.error(`Failed to send photo: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   @Start()
   async start(@Ctx() ctx: Context) {
-    await ctx.reply('Welcome to Windline! Send me a GPX file to get weather forecast for your route.');
+    await this.safeReply(ctx, 'Welcome to Windline! Send me a GPX file to get weather forecast for your route.');
   }
 
   @Help()
   async help(@Ctx() ctx: Context) {
-    await ctx.reply(
+    await this.safeReply(
+      ctx,
       'Commands:\n' +
       '/start - Start the bot\n' +
       '/help - Show this help\n\n' +
@@ -39,7 +58,7 @@ export class BotUpdate {
   async onText(@Ctx() ctx: Context) {
     const message = ctx.message;
     if (message && 'text' in message) {
-      await ctx.reply('Send me a GPX file to analyze weather for your route.');
+      await this.safeReply(ctx, 'Send me a GPX file to analyze weather for your route.');
     }
   }
 
@@ -52,15 +71,15 @@ export class BotUpdate {
     const fileName = document.file_name || 'route.gpx';
 
     if (!fileName.toLowerCase().endsWith('.gpx')) {
-      await ctx.reply('Please send a GPX file (.gpx extension).');
+      await this.safeReply(ctx, 'Please send a GPX file (.gpx extension).');
       return;
     }
 
-    await ctx.reply('Processing GPX file...');
+    await this.safeReply(ctx, 'Processing GPX file...');
 
     const userId = message.from?.id;
     if (!userId) {
-      await ctx.reply('Error: Could not identify user.');
+      await this.safeReply(ctx, 'Error: Could not identify user.');
       return;
     }
 
@@ -72,7 +91,7 @@ export class BotUpdate {
     );
 
     if (!result.success) {
-      await ctx.reply(`Error: ${result.error}`);
+      await this.safeReply(ctx, `Error: ${result.error}`);
       return;
     }
 
@@ -80,14 +99,15 @@ export class BotUpdate {
     const distanceKm = (route.distance / 1000).toFixed(1);
     const status = route.isNew ? 'New route saved!' : 'Route already exists.';
 
-    await ctx.reply(
+    await this.safeReply(
+      ctx,
       `${status}\n\n` +
       `📍 ${route.name}\n` +
       `📏 Distance: ${distanceKm} km\n` +
       `🔢 Points: ${route.pointsCount}`
     );
 
-    await ctx.reply('Fetching weather forecast...');
+    await this.safeReply(ctx, 'Fetching weather forecast...');
 
     const forecastDate = addDays(new Date(), DEFAULT_FORECAST_DAYS_AHEAD);
 
@@ -99,7 +119,7 @@ export class BotUpdate {
     );
 
     if (!forecastResult.success) {
-      await ctx.reply(`⚠️ Could not fetch weather: ${forecastResult.error}`);
+      await this.safeReply(ctx, `⚠️ Could not fetch weather: ${forecastResult.error}`);
       return;
     }
 
@@ -109,12 +129,12 @@ export class BotUpdate {
       const imageResult = await this.weatherApiService.getForecastImage(forecast.requestId);
 
       if (imageResult.success && imageResult.buffer) {
-        await ctx.replyWithPhoto({ source: imageResult.buffer });
+        await this.safeReplyWithPhoto(ctx, imageResult.buffer);
         return;
       }
     }
 
     const forecastMessage = this.weatherApiService.formatForecast(forecast);
-    await ctx.reply(forecastMessage);
+    await this.safeReply(ctx, forecastMessage);
   }
 }

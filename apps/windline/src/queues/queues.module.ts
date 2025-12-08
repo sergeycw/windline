@@ -8,8 +8,20 @@ import { WeatherModule } from '../weather/weather.module';
 @Module({
   imports: [
     BullModule.registerQueue(
-      { name: QUEUE_WEATHER_FETCH },
-      { name: QUEUE_IMAGE_RENDER },
+      {
+        name: QUEUE_WEATHER_FETCH,
+        defaultJobOptions: {
+          removeOnComplete: 100,
+          removeOnFail: 50,
+        },
+      },
+      {
+        name: QUEUE_IMAGE_RENDER,
+        defaultJobOptions: {
+          removeOnComplete: 100,
+          removeOnFail: 50,
+        },
+      },
     ),
     forwardRef(() => WeatherModule),
   ],

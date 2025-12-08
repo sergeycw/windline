@@ -478,13 +478,22 @@ export class WeatherService {
     }
 
     const route = forecastRequest.route;
-    const result = await this.renderForecastMap(route, forecastRequest);
 
-    forecastRequest.imageBuffer = result.buffer;
-    forecastRequest.imageRenderedAt = new Date();
-    forecastRequest.status = 'completed';
-    await this.forecastRequestRepository.save(forecastRequest);
+    try {
+      const result = await this.renderForecastMap(route, forecastRequest);
 
-    this.logger.log(`Image render completed for request ${requestId}`);
+      forecastRequest.imageBuffer = result.buffer;
+      forecastRequest.imageRenderedAt = new Date();
+      forecastRequest.status = 'completed';
+      forecastRequest.error = null;
+      await this.forecastRequestRepository.save(forecastRequest);
+
+      this.logger.log(`Image render completed for request ${requestId}`);
+    } catch (error) {
+      forecastRequest.status = 'failed';
+      forecastRequest.error = error instanceof Error ? error.message : 'Image render failed';
+      await this.forecastRequestRepository.save(forecastRequest);
+      throw error;
+    }
   }
 }

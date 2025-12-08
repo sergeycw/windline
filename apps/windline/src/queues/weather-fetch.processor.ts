@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
@@ -34,5 +34,12 @@ export class WeatherFetchProcessor extends WorkerHost {
       this.logger.error(`Weather fetch failed for request ${requestId}`, error);
       throw error;
     }
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job<WeatherFetchJobData>, error: Error) {
+    this.logger.error(
+      `Weather fetch finally failed for request ${job.data.requestId} after ${job.attemptsMade} attempts: ${error.message}`,
+    );
   }
 }

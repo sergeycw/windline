@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { QUEUE_IMAGE_RENDER, type ImageRenderJobData } from '@windline/queue-jobs';
@@ -23,5 +23,12 @@ export class ImageRenderProcessor extends WorkerHost {
       this.logger.error(`Image render failed for request ${requestId}`, error);
       throw error;
     }
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job<ImageRenderJobData>, error: Error) {
+    this.logger.error(
+      `Image render finally failed for request ${job.data.requestId} after ${job.attemptsMade} attempts: ${error.message}`,
+    );
   }
 }
