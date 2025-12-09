@@ -3,14 +3,24 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
-import type { WeatherProvider, ForecastResponse, WindImpact, HourlyForecast, Coordinates } from '@windline/weather';
+import type {
+  WeatherProvider,
+  ForecastResponse,
+  WindImpact,
+  HourlyForecast,
+  Coordinates,
+  TimedForecastRequest,
+  TimedForecastResponse,
+} from '@windline/weather';
 import {
   WEATHER_PROVIDER,
   ForecastRequest as WeatherForecastRequest,
   sampleRouteForWeather,
+  sampleRouteForWeatherWithTime,
   calculateWindImpact,
 } from '@windline/weather';
 import type { RoutePoint } from '@windline/gpx';
+import { estimateRouteTime } from '@windline/gpx';
 import { Route, ForecastRequest, ForecastSummary } from '@windline/entities';
 import { sha256, CACHE_TTL_MS } from '@windline/common';
 import { MAP_RENDERER, type MapRendererService, type RenderMapResult, type WindMarkerData } from '@windline/map-renderer';
@@ -207,6 +217,27 @@ export class WeatherService {
     return this.weatherProvider.fetchForecast(request);
   }
 
+  async getTimedForecastForRoute(
+    route: Route,
+    date: Date,
+    startHour: number,
+    estimatedTimeHours: number,
+  ): Promise<TimedForecastResponse> {
+    const timedCoordinates = sampleRouteForWeatherWithTime(
+      route.points,
+      route.distance,
+      estimatedTimeHours,
+    );
+
+    const request: TimedForecastRequest = {
+      coordinates: timedCoordinates,
+      date,
+      startHour,
+    };
+
+    return this.weatherProvider.fetchTimedForecast(request);
+  }
+
   calculateWindImpact(
     routePoints: RoutePoint[],
     forecasts: Map<string, HourlyForecast[]>,
@@ -237,6 +268,82 @@ export class WeatherService {
         bearing: point.bearing,
         windDirection: avgWindDirection,
         windSpeed: avgWindSpeed,
+      });
+    }
+
+    return calculateWindImpact(segments);
+  }
+
+  calculateTimedSummary(forecasts: Map<string, HourlyForecast>): ForecastSummary {
+    if (forecasts.size === 0) {
+      return {
+        temperatureMin: 0,
+        temperatureMax: 0,
+        windSpeedMin: 0,
+        windSpeedMax: 0,
+        windGustsMax: 0,
+        precipitationProbabilityMax: 0,
+        precipitationTotal: 0,
+      };
+    }
+
+    let temperatureMin = Infinity;
+    let temperatureMax = -Infinity;
+    let windSpeedMin = Infinity;
+    let windSpeedMax = -Infinity;
+    let windGustsMax = -Infinity;
+    let precipitationProbabilityMax = -Infinity;
+    let precipitationTotal = 0;
+
+    for (const forecast of forecasts.values()) {
+      temperatureMin = Math.min(temperatureMin, forecast.temperature);
+      temperatureMax = Math.max(temperatureMax, forecast.temperature);
+      windSpeedMin = Math.min(windSpeedMin, forecast.windSpeed);
+      windSpeedMax = Math.max(windSpeedMax, forecast.windSpeed);
+      windGustsMax = Math.max(windGustsMax, forecast.windGusts);
+      precipitationProbabilityMax = Math.max(precipitationProbabilityMax, forecast.precipitationProbability);
+      precipitationTotal += forecast.precipitation;
+    }
+
+    const pointCount = forecasts.size;
+    precipitationTotal = precipitationTotal / pointCount;
+
+    return {
+      temperatureMin: Math.round(temperatureMin),
+      temperatureMax: Math.round(temperatureMax),
+      windSpeedMin: Math.round(windSpeedMin),
+      windSpeedMax: Math.round(windSpeedMax),
+      windGustsMax: Math.round(windGustsMax),
+      precipitationProbabilityMax: Math.round(precipitationProbabilityMax),
+      precipitationTotal: Math.round(precipitationTotal * 10) / 10,
+    };
+  }
+
+  calculateTimedWindImpact(
+    routePoints: RoutePoint[],
+    forecasts: Map<string, HourlyForecast>,
+  ): WindImpact {
+    const forecastKeys = Array.from(forecasts.keys());
+    const forecastCoords = forecastKeys.map((key) => {
+      const [lat, lon] = key.split(',').map(Number);
+      return { key, lat, lon };
+    });
+
+    const segments: { bearing: number; windDirection: number; windSpeed: number }[] = [];
+
+    for (const point of routePoints) {
+      if (point.bearing === undefined) continue;
+
+      const nearest = this.findNearestForecast(point, forecastCoords);
+      if (!nearest) continue;
+
+      const forecast = forecasts.get(nearest.key);
+      if (!forecast) continue;
+
+      segments.push({
+        bearing: point.bearing,
+        windDirection: forecast.windDirection,
+        windSpeed: forecast.windSpeed,
       });
     }
 
@@ -288,13 +395,16 @@ export class WeatherService {
         windImpact: forecastRequest.windImpact,
         date: forecastRequest.date,
         startHour: forecastRequest.startHour,
+        estimatedTimeHours: forecastRequest.estimatedTimeHours,
+        elevationGain: forecastRequest.elevationGain,
       },
       windMarkers,
     });
   }
 
   private prepareWindMarkers(route: Route, forecastRequest: ForecastRequest): WindMarkerData[] {
-    const maxMarkers = 8
+    const distanceKm = route.distance / 1000
+    const maxMarkers = this.calculateMaxMarkers(distanceKm)
     const avgWindDirection = this.calculateAverageWindDirection(forecastRequest)
     const avgWindSpeed =
       (forecastRequest.summary!.windSpeedMin + forecastRequest.summary!.windSpeedMax) / 2
@@ -307,13 +417,68 @@ export class WeatherService {
       pointsWithBearing = this.samplePointsArrayWithBearing(route.points, maxMarkers)
     }
 
-    return pointsWithBearing.map((point) => ({
+    const minDistanceKm = this.calculateMinDistanceBetweenMarkers(distanceKm)
+    const filteredPoints = this.filterByMinDistance(pointsWithBearing, minDistanceKm)
+
+    return filteredPoints.map((point) => ({
       lat: point.lat,
       lon: point.lon,
       windDirection: avgWindDirection,
       windSpeed: avgWindSpeed,
       bearing: point.bearing,
     }))
+  }
+
+  private calculateMaxMarkers(distanceKm: number): number {
+    if (distanceKm >= 80) return 12
+    if (distanceKm >= 30) return 8
+    if (distanceKm >= 10) return 6
+    return 4
+  }
+
+  private calculateMinDistanceBetweenMarkers(distanceKm: number): number {
+    if (distanceKm >= 80) return 8
+    if (distanceKm >= 30) return 5
+    if (distanceKm >= 10) return 3
+    return 2
+  }
+
+  private filterByMinDistance(
+    points: Array<{ lat: number; lon: number; bearing: number }>,
+    minDistanceKm: number,
+  ): Array<{ lat: number; lon: number; bearing: number }> {
+    if (points.length <= 1) return points
+
+    const result: Array<{ lat: number; lon: number; bearing: number }> = [points[0]]
+
+    for (let i = 1; i < points.length; i++) {
+      const lastAccepted = result[result.length - 1]
+      const distance = this.haversineDistance(lastAccepted, points[i])
+
+      if (distance >= minDistanceKm) {
+        result.push(points[i])
+      }
+    }
+
+    return result
+  }
+
+  private haversineDistance(
+    p1: { lat: number; lon: number },
+    p2: { lat: number; lon: number },
+  ): number {
+    const R = 6371
+    const dLat = ((p2.lat - p1.lat) * Math.PI) / 180
+    const dLon = ((p2.lon - p1.lon) * Math.PI) / 180
+    const lat1 = (p1.lat * Math.PI) / 180
+    const lat2 = (p2.lat * Math.PI) / 180
+
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+    return R * c
   }
 
   private samplePolylinePointsWithBearing(
@@ -438,23 +603,28 @@ export class WeatherService {
     await this.forecastRequestRepository.save(forecastRequest);
 
     try {
-      const forecastResponse = await this.getForecastForRoute(
-        route.points,
+      const estimate = estimateRouteTime(route.distance, route.points);
+
+      const timedForecastResponse = await this.getTimedForecastForRoute(
+        route,
         new Date(forecastRequest.date),
         forecastRequest.startHour,
-        forecastRequest.durationHours,
+        estimate.estimatedTimeHours,
       );
 
-      const summary = this.calculateSummary(forecastResponse.forecasts);
-      const windImpact = this.calculateWindImpact(route.points, forecastResponse.forecasts);
+      const summary = this.calculateTimedSummary(timedForecastResponse.forecasts);
+      const windImpact = this.calculateTimedWindImpact(route.points, timedForecastResponse.forecasts);
 
       forecastRequest.summary = summary;
       forecastRequest.windImpact = windImpact;
-      forecastRequest.fetchedAt = forecastResponse.fetchedAt;
+      forecastRequest.fetchedAt = timedForecastResponse.fetchedAt;
+      forecastRequest.estimatedTimeHours = estimate.estimatedTimeHours;
+      forecastRequest.elevationGain = estimate.elevationGain;
+      forecastRequest.durationHours = Math.ceil(estimate.estimatedTimeHours);
       forecastRequest.error = null;
 
       await this.forecastRequestRepository.save(forecastRequest);
-      this.logger.log(`Weather fetch completed for request ${requestId}`);
+      this.logger.log(`Weather fetch completed for request ${requestId}, estimated time: ${estimate.estimatedTimeHours}h`);
     } catch (error) {
       forecastRequest.status = 'failed';
       forecastRequest.error = error instanceof Error ? error.message : 'Unknown error';

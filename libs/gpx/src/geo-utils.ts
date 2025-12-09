@@ -60,3 +60,21 @@ export function addBearingsToPoints(points: RoutePoint[]): RoutePoint[] {
     };
   });
 }
+
+export function calculateElevationGain(points: RoutePoint[]): number {
+  let totalGain = 0;
+
+  for (let i = 1; i < points.length; i++) {
+    const prevEle = points[i - 1].ele;
+    const currEle = points[i].ele;
+
+    if (prevEle !== undefined && currEle !== undefined) {
+      const diff = currEle - prevEle;
+      if (diff > 0) {
+        totalGain += diff;
+      }
+    }
+  }
+
+  return Math.round(totalGain);
+}

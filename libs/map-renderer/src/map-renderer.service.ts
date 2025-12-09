@@ -1,4 +1,5 @@
 import { Inject } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import StaticMaps from 'staticmaps'
 import sharp from 'sharp'
 import polyline from '@mapbox/polyline'
@@ -10,29 +11,26 @@ import type {
   RouteRenderData,
   WindMarkerData,
 } from './map-renderer.types'
-import { createLegendCardSvg } from './legend-builder'
+import { createLegendCardSvg, getLegendCardHeight, SHADOW_MARGIN } from './legend-builder'
 import { TILE_PROVIDER, type TileProvider } from './providers'
+import { getPalette, type RoutePalette, type PaletteType } from './palette'
+import type { GeoBounds } from './card-position'
 
-const DEFAULT_WIDTH = 800
-const DEFAULT_HEIGHT = 600
-const PADDING_PERCENT = 0.12
-const LEGEND_OFFSET = 16
+const DEFAULT_WIDTH = 1080
+const DEFAULT_HEIGHT = 1350
+const PADDING_PERCENT = 0.08
+const LEGEND_OFFSET = 0
 
-const ROUTE_COLOR = '#8B5CF6'
-const ROUTE_WIDTH = 4
-const HALO_COLOR = '#C4B5FD'
-const HALO_WIDTH = 8
-
-const START_MARKER_COLOR = '#22C55E'
-const FINISH_MARKER_COLOR = '#EF4444'
 const MARKER_RADIUS = 10
-
-const WIND_ARROW_COLOR = '#DC2626'
-const WIND_ARROW_OUTLINE = '#FFFFFF'
 const ARROW_LENGTH_PERCENT = 0.08
 const HEAD_LENGTH_RATIO = 0.375
 const HEAD_WIDTH_RATIO = 0.5
 const NECK_WIDTH_RATIO = 0.2
+
+const MIN_ARROW_SCALE = 0.6
+const MAX_ARROW_SCALE = 1.4
+const WIND_SPEED_MIN_THRESHOLD = 5
+const WIND_SPEED_MAX_THRESHOLD = 30
 
 interface ArrowSizes {
   length: number
@@ -42,10 +40,16 @@ interface ArrowSizes {
 }
 
 export class MapRendererService {
+  private readonly palette: RoutePalette
+
   constructor(
     @Inject(TILE_PROVIDER)
     private readonly tileProvider: TileProvider,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const paletteType = this.configService.get<PaletteType>('mapRenderer.palette', 'default')
+    this.palette = getPalette(paletteType)
+  }
 
   async renderMap(input: RenderMapInput, options: RenderMapOptions = {}): Promise<RenderMapResult> {
     const width = options.width ?? DEFAULT_WIDTH
@@ -71,14 +75,14 @@ export class MapRendererService {
     if (coords.length >= 2) {
       map.addLine({
         coords,
-        color: HALO_COLOR,
-        width: HALO_WIDTH,
+        color: this.palette.haloColor,
+        width: this.palette.haloWidth,
       })
 
       map.addLine({
         coords,
-        color: ROUTE_COLOR,
-        width: ROUTE_WIDTH,
+        color: this.palette.routeColor,
+        width: this.palette.routeWidth,
       })
     }
 
@@ -90,13 +94,15 @@ export class MapRendererService {
 
     const mapBuffer = await map.image.buffer('image/png')
 
-    const legendSvg = createLegendCardSvg(input.route, input.forecast, {
-      x: LEGEND_OFFSET,
-      y: LEGEND_OFFSET,
-    })
+    const cardHeight = getLegendCardHeight(input.forecast)
+    const legendSvg = createLegendCardSvg(input.route, input.forecast, width)
 
     const finalBuffer = await sharp(mapBuffer)
-      .composite([{ input: legendSvg, top: 0, left: 0 }])
+      .composite([{
+        input: legendSvg,
+        top: height - cardHeight,
+        left: 0,
+      }])
       .png({ compressionLevel: 6 })
       .toBuffer()
 
@@ -112,6 +118,26 @@ export class MapRendererService {
       return decoded.map(([lat, lon]) => ({ lat, lon }))
     }
     return routeData.points
+  }
+
+  private calculateBounds(points: Array<{ lat: number; lon: number }>): GeoBounds {
+    if (points.length === 0) {
+      return { minLat: 0, maxLat: 0, minLon: 0, maxLon: 0 }
+    }
+
+    let minLat = Infinity,
+      maxLat = -Infinity
+    let minLon = Infinity,
+      maxLon = -Infinity
+
+    for (const p of points) {
+      if (p.lat < minLat) minLat = p.lat
+      if (p.lat > maxLat) maxLat = p.lat
+      if (p.lon < minLon) minLon = p.lon
+      if (p.lon > maxLon) maxLon = p.lon
+    }
+
+    return { minLat, maxLat, minLon, maxLon }
   }
 
   private calculateArrowSizes(points: Array<{ lat: number; lon: number }>): ArrowSizes {
@@ -145,16 +171,34 @@ export class MapRendererService {
     }
   }
 
-  private addWindMarkers(map: StaticMaps, markers: WindMarkerData[], sizes: ArrowSizes): void {
+  private addWindMarkers(map: StaticMaps, markers: WindMarkerData[], baseSizes: ArrowSizes): void {
     for (const marker of markers) {
-      const arrowCoords = this.calculateArrowPolygon(marker, sizes)
+      const scale = this.calculateArrowScale(marker.windSpeed)
+      const scaledSizes: ArrowSizes = {
+        length: baseSizes.length * scale,
+        headLength: baseSizes.headLength * scale,
+        headWidth: baseSizes.headWidth * scale,
+        neckWidth: baseSizes.neckWidth * scale,
+      }
+
+      const arrowCoords = this.calculateArrowPolygon(marker, scaledSizes)
       map.addPolygon({
         coords: arrowCoords,
-        fill: WIND_ARROW_COLOR,
-        color: WIND_ARROW_OUTLINE,
+        fill: this.palette.windArrowColor,
+        color: this.palette.windArrowOutline,
         width: 2,
       })
     }
+  }
+
+  private calculateArrowScale(windSpeed: number): number {
+    if (windSpeed <= WIND_SPEED_MIN_THRESHOLD) return MIN_ARROW_SCALE
+    if (windSpeed >= WIND_SPEED_MAX_THRESHOLD) return MAX_ARROW_SCALE
+
+    const ratio =
+      (windSpeed - WIND_SPEED_MIN_THRESHOLD) /
+      (WIND_SPEED_MAX_THRESHOLD - WIND_SPEED_MIN_THRESHOLD)
+    return MIN_ARROW_SCALE + ratio * (MAX_ARROW_SCALE - MIN_ARROW_SCALE)
   }
 
   private calculateArrowPolygon(marker: WindMarkerData, sizes: ArrowSizes): Array<[number, number]> {
@@ -227,7 +271,7 @@ export class MapRendererService {
     map.addCircle({
       coord: [startPoint.lon, startPoint.lat],
       radius: MARKER_RADIUS,
-      fill: START_MARKER_COLOR,
+      fill: this.palette.startMarkerColor,
       width: 2,
       color: '#FFFFFF',
     })
@@ -240,7 +284,7 @@ export class MapRendererService {
       map.addCircle({
         coord: [finishPoint.lon, finishPoint.lat],
         radius: MARKER_RADIUS,
-        fill: FINISH_MARKER_COLOR,
+        fill: this.palette.finishMarkerColor,
         width: 2,
         color: '#FFFFFF',
       })

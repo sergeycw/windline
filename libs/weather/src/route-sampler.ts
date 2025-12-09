@@ -1,6 +1,7 @@
 import {
   Coordinates,
   coordsKey,
+  TimedCoordinate,
   WEATHER_SAMPLING_DISTANCE_METERS,
 } from './weather.types';
 import { haversine } from '@windline/gpx';
@@ -75,4 +76,69 @@ export function sampleRouteForWeather(
   }
 
   return unique;
+}
+
+export function sampleRouteForWeatherWithTime(
+  points: PointLike[],
+  totalDistanceMeters: number,
+  estimatedTimeHours: number,
+  samplingDistance: number = WEATHER_SAMPLING_DISTANCE_METERS,
+): TimedCoordinate[] {
+  if (points.length === 0) return [];
+  if (points.length === 1) {
+    return [{ lat: points[0].lat, lon: points[0].lon, hourOffset: 0 }];
+  }
+
+  const totalDistanceKm = totalDistanceMeters / 1000;
+  const speedKmh = totalDistanceKm / estimatedTimeHours;
+
+  interface SampledPoint extends PointLike {
+    distanceFromStartKm: number;
+  }
+
+  const sampled: SampledPoint[] = [
+    { lat: points[0].lat, lon: points[0].lon, distanceFromStartKm: 0 },
+  ];
+  let lastPoint = points[0];
+  let accumulatedDistance = 0;
+
+  for (let i = 1; i < points.length; i++) {
+    const segmentDistance = haversine(lastPoint, points[i]);
+    accumulatedDistance += segmentDistance;
+
+    if (accumulatedDistance >= samplingDistance) {
+      sampled.push({
+        lat: points[i].lat,
+        lon: points[i].lon,
+        distanceFromStartKm: accumulatedDistance / 1000,
+      });
+      lastPoint = points[i];
+    }
+  }
+
+  const lastRoutePoint = points[points.length - 1];
+  const lastSampled = sampled[sampled.length - 1];
+  if (lastSampled.lat !== lastRoutePoint.lat || lastSampled.lon !== lastRoutePoint.lon) {
+    sampled.push({
+      lat: lastRoutePoint.lat,
+      lon: lastRoutePoint.lon,
+      distanceFromStartKm: totalDistanceKm,
+    });
+  }
+
+  const seen = new Map<string, TimedCoordinate>();
+
+  for (const point of sampled) {
+    const key = coordsKey({ lat: point.lat, lon: point.lon });
+    if (!seen.has(key)) {
+      const hourOffset = point.distanceFromStartKm / speedKmh;
+      seen.set(key, {
+        lat: point.lat,
+        lon: point.lon,
+        hourOffset,
+      });
+    }
+  }
+
+  return Array.from(seen.values());
 }

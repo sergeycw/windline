@@ -1,62 +1,55 @@
 import type { ForecastRenderData, RouteRenderData } from './map-renderer.types'
+import type { ForecastSummary, WindImpactData } from '@windline/entities'
 
-const CARD_WIDTH = 260
-const CARD_PADDING = 12
+const CARD_PADDING = 16
+const CARD_PADDING_X = 24
 const BORDER_RADIUS = 12
-const LINE_HEIGHT = 18
-const TITLE_SIZE = 14
-const TEXT_SIZE = 11
+const LINE_HEIGHT = 22
+const DATE_SIZE = 18
+const TEXT_SIZE = 13
 
-const BG_COLOR = 'rgba(255, 255, 255, 0.92)'
-const SHADOW_COLOR = 'rgba(0, 0, 0, 0.15)'
-const TEXT_PRIMARY = '#1F2937'
-const TEXT_SECONDARY = '#4B5563'
-const TEXT_MUTED = '#6B7280'
-
-export interface LegendCardOptions {
-  x: number
-  y: number
-}
+const BG_COLOR = 'rgba(255, 255, 255, 0.95)'
+const SHADOW_COLOR = 'rgba(0, 0, 0, 0.12)'
+const TEXT_PRIMARY = '#111827'
+const TEXT_SECONDARY = '#374151'
+const TEXT_MUTED = '#4B5563'
+export const SHADOW_MARGIN = 16
 
 export function createLegendCardSvg(
   route: RouteRenderData,
   forecast: ForecastRenderData,
-  options: LegendCardOptions = { x: 16, y: 16 },
+  mapWidth: number,
 ): Buffer {
-  const { summary, windImpact, date, startHour } = forecast
+  const { summary, windImpact, date, startHour, estimatedTimeHours, elevationGain } = forecast
 
   const distanceKm = (route.distance / 1000).toFixed(1)
-  const formattedDate = formatDate(date)
+  const datePrimary = formatDatePrimary(date, startHour)
+  const duration = formatDuration(estimatedTimeHours)
+  const elevation = formatElevation(elevationGain)
+  const temperature = formatTemperature(summary)
+  const wind = formatWind(summary)
+  const precip = formatPrecip(summary)
+  const windDistribution = formatWindDistribution(windImpact)
 
-  const tempRange = `${summary.temperatureMin}–${summary.temperatureMax}°C`
-  const windRange = `${summary.windSpeedMin}–${summary.windSpeedMax} km/h`
-  const gusts =
-    summary.windGustsMax > summary.windSpeedMax ? ` (gusts ${summary.windGustsMax})` : ''
-  const precip =
-    summary.precipitationProbabilityMax > 0 ? `${summary.precipitationProbabilityMax}%` : ''
-
-  const headPct = Math.round(windImpact.distribution.headwindPercent)
-  const tailPct = Math.round(windImpact.distribution.tailwindPercent)
-  const crossPct = Math.round(windImpact.distribution.crosswindPercent)
+  const routeInfoParts = [
+    `${distanceKm} km`,
+    duration,
+    elevation,
+    temperature,
+    wind,
+  ].filter(Boolean)
 
   const lines = [
-    { text: escapeXml(route.name), size: TITLE_SIZE, color: TEXT_PRIMARY, bold: true },
-    { text: `${distanceKm} km`, size: TEXT_SIZE, color: TEXT_SECONDARY, bold: false },
-    {
-      text: `${formattedDate} ${startHour}:00`,
-      size: TEXT_SIZE,
-      color: TEXT_SECONDARY,
-      bold: false,
-    },
-    { text: `${tempRange}  •  ${windRange}${gusts}`, size: TEXT_SIZE, color: TEXT_SECONDARY, bold: false },
+    { text: datePrimary, size: DATE_SIZE, color: TEXT_PRIMARY, bold: true },
+    { text: routeInfoParts.join('  •  '), size: TEXT_SIZE, color: TEXT_SECONDARY, bold: false },
   ]
 
   if (precip) {
-    lines.push({ text: `Precip: ${precip}`, size: TEXT_SIZE, color: TEXT_SECONDARY, bold: false })
+    lines.push({ text: precip, size: TEXT_SIZE, color: TEXT_SECONDARY, bold: false })
   }
 
   lines.push({
-    text: `↑${headPct}%  ↓${tailPct}%  ↔${crossPct}%`,
+    text: windDistribution,
     size: TEXT_SIZE,
     color: TEXT_MUTED,
     bold: false,
@@ -65,38 +58,38 @@ export function createLegendCardSvg(
   const contentHeight = lines.length * LINE_HEIGHT
   const cardHeight = contentHeight + CARD_PADDING * 2
 
-  let textY = options.y + CARD_PADDING + LINE_HEIGHT - 4
+  let textY = SHADOW_MARGIN + CARD_PADDING + LINE_HEIGHT - 4
   const textElements = lines
     .map((line) => {
-      const element = `<text x="${options.x + CARD_PADDING}" y="${textY}" font-family="Arial, sans-serif" font-size="${line.size}" font-weight="${line.bold ? 'bold' : 'normal'}" fill="${line.color}">${line.text}</text>`
+      const element = `<text x="${CARD_PADDING_X}" y="${textY}" font-family="Arial, sans-serif" font-size="${line.size}" font-weight="${line.bold ? 'bold' : 'normal'}" fill="${line.color}">${line.text}</text>`
       textY += LINE_HEIGHT
       return element
     })
     .join('\n  ')
 
-  const svg = `<svg width="${CARD_WIDTH + options.x * 2}" height="${cardHeight + options.y * 2}" xmlns="http://www.w3.org/2000/svg">
+  const svgWidth = mapWidth
+  const svgHeight = cardHeight + SHADOW_MARGIN
+
+  const svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="${SHADOW_COLOR}"/>
+    <filter id="shadow" x="0" y="-50%" width="100%" height="150%">
+      <feDropShadow dx="0" dy="-2" stdDeviation="4" flood-color="${SHADOW_COLOR}"/>
     </filter>
   </defs>
-  <rect x="${options.x}" y="${options.y}" width="${CARD_WIDTH}" height="${cardHeight}" rx="${BORDER_RADIUS}" ry="${BORDER_RADIUS}" fill="${BG_COLOR}" filter="url(#shadow)"/>
+  <rect x="0" y="${SHADOW_MARGIN}" width="${mapWidth}" height="${cardHeight}" fill="${BG_COLOR}" filter="url(#shadow)"/>
   ${textElements}
 </svg>`
 
   return Buffer.from(svg)
 }
 
-export function getLegendCardDimensions(
-  forecast: ForecastRenderData,
-): { width: number; height: number } {
-  const lineCount = forecast.summary.precipitationProbabilityMax > 0 ? 6 : 5
+export function getLegendCardHeight(forecast: ForecastRenderData): number {
+  const lineCount = forecast.summary.precipitationProbabilityMax > 0 ? 4 : 3
   const contentHeight = lineCount * LINE_HEIGHT
-  const cardHeight = contentHeight + CARD_PADDING * 2
-  return { width: CARD_WIDTH + 32, height: cardHeight + 32 }
+  return contentHeight + CARD_PADDING * 2 + SHADOW_MARGIN
 }
 
-function formatDate(dateStr: string): string {
+function formatDatePrimary(dateStr: string, startHour: number): string {
   const date = new Date(dateStr)
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const months = [
@@ -113,8 +106,55 @@ function formatDate(dateStr: string): string {
     'Nov',
     'Dec',
   ]
+  const hour = startHour.toString().padStart(2, '0')
+  return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}, ${hour}:00`
+}
 
-  return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}`
+function formatTemperature(summary: ForecastSummary): string {
+  const { temperatureMin, temperatureMax } = summary
+  if (temperatureMin === temperatureMax) {
+    return `${temperatureMax}°C`
+  }
+  return `${temperatureMin}…${temperatureMax}°C`
+}
+
+function formatWind(summary: ForecastSummary): string {
+  const { windSpeedMin, windSpeedMax, windGustsMax } = summary
+  const speedPart =
+    windSpeedMin === windSpeedMax
+      ? `${windSpeedMax} km/h`
+      : `${windSpeedMin}–${windSpeedMax} km/h`
+
+  if (windGustsMax > windSpeedMax) {
+    return `${speedPart}, gusts ${windGustsMax}`
+  }
+  return speedPart
+}
+
+function formatPrecip(summary: ForecastSummary): string | null {
+  const { precipitationProbabilityMax, precipitationTotal } = summary
+  if (precipitationProbabilityMax === 0) return null
+
+  if (precipitationTotal > 0) {
+    return `precip ${precipitationTotal} mm, ${precipitationProbabilityMax}%`
+  }
+  return `precip ${precipitationProbabilityMax}%`
+}
+
+function formatWindDistribution(windImpact: WindImpactData): string {
+  const { headwindPercent, tailwindPercent, crosswindPercent } = windImpact.distribution
+  return `headwind ${Math.round(headwindPercent)}%  tailwind ${Math.round(tailwindPercent)}%  crosswind ${Math.round(crosswindPercent)}%`
+}
+
+function formatDuration(hours: number | null | undefined): string | null {
+  if (!hours) return null
+  if (hours < 1) return `~${Math.round(hours * 60)}min`
+  return `~${hours.toFixed(1)}h`
+}
+
+function formatElevation(meters: number | null | undefined): string | null {
+  if (!meters || meters === 0) return null
+  return `↑${meters}m`
 }
 
 function escapeXml(text: string): string {

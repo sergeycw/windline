@@ -52,3 +52,19 @@ export interface SegmentWindImpact {
 export function coordsKey(coords: Coordinates): string {
   return `${coords.lat.toFixed(WEATHER_COORD_PRECISION)},${coords.lon.toFixed(WEATHER_COORD_PRECISION)}`;
 }
+
+export interface TimedCoordinate extends Coordinates {
+  hourOffset: number;
+}
+
+export interface TimedForecastRequest {
+  coordinates: TimedCoordinate[];
+  date: Date;
+  startHour: number;
+}
+
+export interface TimedForecastResponse {
+  forecasts: Map<string, HourlyForecast>;
+  fetchedAt: Date;
+  totalDurationHours: number;
+}

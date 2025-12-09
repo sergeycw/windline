@@ -4,6 +4,8 @@ import {
   ForecastRequest,
   ForecastResponse,
   HourlyForecast,
+  TimedForecastRequest,
+  TimedForecastResponse,
   coordsKey,
 } from '../weather.types';
 
@@ -148,5 +150,99 @@ export class OpenMeteoProvider implements WeatherProvider {
     }
 
     return forecasts;
+  }
+
+  async fetchTimedForecast(request: TimedForecastRequest): Promise<TimedForecastResponse> {
+    const { coordinates, date, startHour } = request;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const requestDate = new Date(date);
+    requestDate.setHours(0, 0, 0, 0);
+
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + MAX_FORECAST_DAYS);
+
+    if (requestDate < today) {
+      throw new Error('Historical forecasts are not supported');
+    }
+    if (requestDate > maxDate) {
+      throw new Error(`Forecast is only available up to ${MAX_FORECAST_DAYS} days ahead`);
+    }
+
+    const maxHourOffset = Math.max(...coordinates.map((c) => c.hourOffset));
+    const totalDurationHours = Math.ceil(maxHourOffset) + 1;
+
+    const uniqueCoords = new Map<string, { lat: number; lon: number; hourOffset: number }>();
+    for (const coord of coordinates) {
+      const key = coordsKey(coord);
+      if (!uniqueCoords.has(key)) {
+        uniqueCoords.set(key, {
+          lat: parseFloat(coord.lat.toFixed(2)),
+          lon: parseFloat(coord.lon.toFixed(2)),
+          hourOffset: coord.hourOffset,
+        });
+      }
+    }
+
+    const coordsArray = Array.from(uniqueCoords.entries());
+
+    const dateStr = date.toISOString().split('T')[0];
+    const latitudes = coordsArray.map(([, c]) => c.lat).join(',');
+    const longitudes = coordsArray.map(([, c]) => c.lon).join(',');
+
+    const url = new URL(OPEN_METEO_API);
+    url.searchParams.set('latitude', latitudes);
+    url.searchParams.set('longitude', longitudes);
+    url.searchParams.set('hourly', HOURLY_PARAMS);
+    url.searchParams.set('timezone', 'auto');
+    url.searchParams.set('start_date', dateStr);
+    url.searchParams.set('end_date', dateStr);
+
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+      throw new Error(`Open-Meteo API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data: OpenMeteoResponse = await response.json();
+    const responses = Array.isArray(data) ? data : [data];
+
+    const forecasts = new Map<string, HourlyForecast>();
+
+    for (let i = 0; i < coordsArray.length; i++) {
+      const [key, coordData] = coordsArray[i];
+      const locationData = responses[i];
+
+      const targetHour = startHour + Math.floor(coordData.hourOffset);
+      const clampedHour = Math.min(Math.max(targetHour, 0), 23);
+
+      const forecast = this.extractSingleHourForecast(locationData.hourly, clampedHour);
+      forecasts.set(key, forecast);
+    }
+
+    return {
+      forecasts,
+      fetchedAt: new Date(),
+      totalDurationHours,
+    };
+  }
+
+  private extractSingleHourForecast(
+    hourly: OpenMeteoHourlyResponse,
+    hour: number,
+  ): HourlyForecast {
+    return {
+      time: new Date(hourly.time[hour]),
+      temperature: hourly.temperature_2m[hour],
+      apparentTemperature: hourly.apparent_temperature[hour],
+      precipitation: hourly.precipitation[hour],
+      precipitationProbability: hourly.precipitation_probability[hour],
+      windSpeed: hourly.wind_speed_10m[hour],
+      windDirection: hourly.wind_direction_10m[hour],
+      windGusts: hourly.wind_gusts_10m[hour],
+      weatherCode: hourly.weather_code[hour],
+    };
   }
 }

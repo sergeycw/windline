@@ -62,6 +62,12 @@ export class ForecastRequest {
   @Column({ type: 'smallint' })
   durationHours: number;
 
+  @Column({ type: 'real', nullable: true })
+  estimatedTimeHours: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  elevationGain: number | null;
+
   @Column({
     type: 'enum',
     enum: ['pending', 'processing', 'completed', 'failed'],

@@ -12,6 +12,8 @@ export interface ForecastRenderData {
   windImpact: WindImpactData;
   date: string;
   startHour: number;
+  estimatedTimeHours?: number | null;
+  elevationGain?: number | null;
 }
 
 export interface WindMarkerData {
