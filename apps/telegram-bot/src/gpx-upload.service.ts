@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Context, Telegraf } from 'telegraf';
 import { FETCH_TIMEOUT_MS } from '@windline/common';
+import { createApiHeaders } from './api-headers';
 
 interface UploadResult {
   success: boolean;
@@ -32,11 +33,7 @@ export class GpxUploadService {
   }
 
   private getHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.apiSecretKey) {
-      headers['X-API-Key'] = this.apiSecretKey;
-    }
-    return headers;
+    return createApiHeaders(this.apiSecretKey, 'application/json');
   }
 
   async uploadFromTelegram(
@@ -102,6 +99,9 @@ export class GpxUploadService {
     }
     if (status === 413) {
       return 'File is too large. Maximum size is 10MB.';
+    }
+    if (status === 429) {
+      return 'Daily upload limit reached (10 routes/day). Please try again tomorrow.';
     }
     if (status >= 500) {
       return 'Server error. Please try again later.';

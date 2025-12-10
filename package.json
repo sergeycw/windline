@@ -21,7 +21,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./apps/windline/test/jest-e2e.json",
-    "db:clear": "docker compose exec -T postgres psql -U windline -d windline -c \"TRUNCATE TABLE forecast_requests, routes CASCADE;\""
+    "dev:reset": "docker compose exec -T postgres psql -U windline -d windline -c \"TRUNCATE TABLE forecast_requests, routes CASCADE;\" && docker compose exec -T redis redis-cli KEYS 'rate_limit:*' | xargs -r docker compose exec -T redis redis-cli DEL"
   },
   "dependencies": {
     "@mapbox/polyline": "^1.2.1",

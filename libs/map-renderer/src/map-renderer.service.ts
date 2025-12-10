@@ -11,15 +11,31 @@ import type {
   RouteRenderData,
   WindMarkerData,
 } from './map-renderer.types'
-import { createLegendCardSvg, getLegendCardHeight, SHADOW_MARGIN } from './legend-builder'
+import { createLegendCardSvg, getLegendCardHeight, LEGEND_MARGIN_BOTTOM } from './legend-builder'
 import { TILE_PROVIDER, type TileProvider } from './providers'
 import { getPalette, type RoutePalette, type PaletteType } from './palette'
-import type { GeoBounds } from './card-position'
+
+interface StaticMapsWithZoom extends InstanceType<typeof StaticMaps> {
+  zoom: number
+}
 
 const DEFAULT_WIDTH = 1080
 const DEFAULT_HEIGHT = 1350
-const PADDING_PERCENT = 0.08
-const LEGEND_OFFSET = 0
+const PADDING_X = 24
+const PADDING_TOP = 24
+const ROUTE_LEGEND_BUFFER = 30
+const TILE_SIZE = 256
+const ROUTE_DETECTION_THRESHOLD = 30
+
+const geoHelper = {
+  latToY: (lat: number, zoom: number): number => {
+    return (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom)
+  },
+  yToLat: (y: number, zoom: number): number => {
+    const n = Math.PI - 2 * Math.PI * y / Math.pow(2, zoom)
+    return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
+  },
+}
 
 const MARKER_RADIUS = 10
 const ARROW_LENGTH_PERCENT = 0.08
@@ -56,54 +72,86 @@ export class MapRendererService {
     const height = options.height ?? DEFAULT_HEIGHT
 
     const tileConfig = this.tileProvider.getConfig()
-
-    const paddingX = Math.round(width * PADDING_PERCENT)
-    const paddingY = Math.round(height * PADDING_PERCENT)
-
-    const map = new StaticMaps({
-      width,
-      height,
-      paddingX,
-      paddingY,
-      tileUrl: tileConfig.tileUrl,
-      tileRequestHeader: tileConfig.tileRequestHeader,
-    })
-
     const geoCoords = this.decodeCoords(input.route)
     const coords = geoCoords.map((c) => [c.lon, c.lat] as [number, number])
 
+    const cardHeight = getLegendCardHeight(input.forecast)
+    const legendTop = height - cardHeight - LEGEND_MARGIN_BOTTOM
+
+    const mapAreaTop = PADDING_TOP
+    const mapAreaHeight = legendTop - ROUTE_LEGEND_BUFFER - mapAreaTop
+
+    const zoomCalcMap = new StaticMaps({
+      width,
+      height: mapAreaHeight,
+      paddingX: PADDING_X,
+      paddingY: PADDING_X,
+      tileUrl: tileConfig.tileUrl,
+      tileRequestHeader: tileConfig.tileRequestHeader,
+    })
     if (coords.length >= 2) {
-      map.addLine({
+      zoomCalcMap.addLine({ coords, color: 'rgba(0,0,0,0)', width: 1 })
+    }
+    await zoomCalcMap.render()
+    const optimalZoom = (zoomCalcMap as StaticMapsWithZoom).zoom
+
+    const routeCenter = this.calculateCenter(geoCoords)
+    const adjustedCenter = this.calculateAdjustedCenter(routeCenter, optimalZoom, height, mapAreaTop, mapAreaHeight)
+
+    const mapOnly = new StaticMaps({
+      width,
+      height,
+      tileUrl: tileConfig.tileUrl,
+      tileRequestHeader: tileConfig.tileRequestHeader,
+    })
+    if (coords.length >= 2) {
+      mapOnly.addLine({ coords, color: 'rgba(0,0,0,0)', width: 1 })
+    }
+    await mapOnly.render(adjustedCenter, optimalZoom)
+
+    const mapOnlyBuffer = await mapOnly.image.buffer('image/png')
+
+    const grayscaleMapBuffer = await sharp(mapOnlyBuffer)
+      .grayscale()
+      .modulate({ brightness: 1.05 })
+      .toBuffer()
+
+    const mapWithRoute = new StaticMaps({
+      width,
+      height,
+      tileUrl: tileConfig.tileUrl,
+      tileRequestHeader: tileConfig.tileRequestHeader,
+    })
+    if (coords.length >= 2) {
+      mapWithRoute.addLine({
         coords,
         color: this.palette.haloColor,
         width: this.palette.haloWidth,
       })
-
-      map.addLine({
+      mapWithRoute.addLine({
         coords,
         color: this.palette.routeColor,
         width: this.palette.routeWidth,
       })
     }
-
     const arrowSizes = this.calculateArrowSizes(geoCoords)
-    this.addWindMarkers(map, input.windMarkers, arrowSizes)
-    this.addStartFinishMarkers(map, geoCoords)
+    this.addWindMarkers(mapWithRoute, input.windMarkers, arrowSizes)
+    this.addStartFinishMarkers(mapWithRoute, geoCoords)
 
-    await map.render()
+    await mapWithRoute.render(adjustedCenter, optimalZoom)
 
-    const mapBuffer = await map.image.buffer('image/png')
+    const routeBuffer = await mapWithRoute.image.buffer('image/png')
 
-    const cardHeight = getLegendCardHeight(input.forecast)
+    const routeOnlyBuffer = await this.extractRouteLayer(routeBuffer, mapOnlyBuffer)
+
     const legendSvg = createLegendCardSvg(input.route, input.forecast, width)
 
-    const finalBuffer = await sharp(mapBuffer)
-      .composite([{
-        input: legendSvg,
-        top: height - cardHeight,
-        left: 0,
-      }])
-      .png({ compressionLevel: 6 })
+    const finalBuffer = await sharp(grayscaleMapBuffer)
+      .composite([
+        { input: routeOnlyBuffer, blend: 'over' },
+        { input: legendSvg, top: legendTop, left: 0 },
+      ])
+      .png()
       .toBuffer()
 
     return {
@@ -112,32 +160,80 @@ export class MapRendererService {
     }
   }
 
+  private calculateCenter(coords: Array<{ lat: number; lon: number }>): [number, number] {
+    let minLat = Infinity, maxLat = -Infinity
+    let minLon = Infinity, maxLon = -Infinity
+
+    for (const c of coords) {
+      if (c.lat < minLat) minLat = c.lat
+      if (c.lat > maxLat) maxLat = c.lat
+      if (c.lon < minLon) minLon = c.lon
+      if (c.lon > maxLon) maxLon = c.lon
+    }
+
+    return [(minLon + maxLon) / 2, (minLat + maxLat) / 2]
+  }
+
+  private calculateAdjustedCenter(
+    routeCenter: [number, number],
+    zoom: number,
+    fullHeight: number,
+    mapAreaTop: number,
+    mapAreaHeight: number,
+  ): [number, number] {
+    const tileSize = TILE_SIZE
+    const routeCenterTileY = geoHelper.latToY(routeCenter[1], zoom)
+    const routeCenterPixelY = routeCenterTileY * tileSize
+
+    const targetPixelY = mapAreaTop + mapAreaHeight / 2
+    const fullMapCenterPixelY = fullHeight / 2
+    const pixelOffset = fullMapCenterPixelY - targetPixelY
+
+    const newCenterPixelY = routeCenterPixelY + pixelOffset
+    const newCenterTileY = newCenterPixelY / tileSize
+
+    const adjustedLat = geoHelper.yToLat(newCenterTileY, zoom)
+    return [routeCenter[0], adjustedLat]
+  }
+
+  private async extractRouteLayer(withRoute: Buffer, withoutRoute: Buffer): Promise<Buffer> {
+    const { data: dataWith, info } = await sharp(withRoute)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true })
+    const dataWithout = await sharp(withoutRoute).ensureAlpha().raw().toBuffer()
+
+    const result = Buffer.alloc(dataWith.length)
+
+    for (let i = 0; i < dataWith.length; i += info.channels) {
+      const rDiff = Math.abs(dataWith[i] - dataWithout[i])
+      const gDiff = Math.abs(dataWith[i + 1] - dataWithout[i + 1])
+      const bDiff = Math.abs(dataWith[i + 2] - dataWithout[i + 2])
+
+      if (rDiff > ROUTE_DETECTION_THRESHOLD || gDiff > ROUTE_DETECTION_THRESHOLD || bDiff > ROUTE_DETECTION_THRESHOLD) {
+        result[i] = dataWith[i]
+        result[i + 1] = dataWith[i + 1]
+        result[i + 2] = dataWith[i + 2]
+        result[i + 3] = 255
+      } else {
+        result[i] = 0
+        result[i + 1] = 0
+        result[i + 2] = 0
+        result[i + 3] = 0
+      }
+    }
+
+    return sharp(result, { raw: { width: info.width, height: info.height, channels: 4 } })
+      .png()
+      .toBuffer()
+  }
+
   private decodeCoords(routeData: RouteRenderData): Array<{ lat: number; lon: number }> {
     if (routeData.renderPolyline) {
       const decoded = polyline.decode(routeData.renderPolyline)
       return decoded.map(([lat, lon]) => ({ lat, lon }))
     }
     return routeData.points
-  }
-
-  private calculateBounds(points: Array<{ lat: number; lon: number }>): GeoBounds {
-    if (points.length === 0) {
-      return { minLat: 0, maxLat: 0, minLon: 0, maxLon: 0 }
-    }
-
-    let minLat = Infinity,
-      maxLat = -Infinity
-    let minLon = Infinity,
-      maxLon = -Infinity
-
-    for (const p of points) {
-      if (p.lat < minLat) minLat = p.lat
-      if (p.lat > maxLat) maxLat = p.lat
-      if (p.lon < minLon) minLon = p.lon
-      if (p.lon > maxLon) maxLon = p.lon
-    }
-
-    return { minLat, maxLat, minLon, maxLon }
   }
 
   private calculateArrowSizes(points: Array<{ lat: number; lon: number }>): ArrowSizes {

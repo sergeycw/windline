@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { FETCH_TIMEOUT_MS } from '@windline/common';
-import { formatDateISO } from '@windline/common';
+import { FETCH_TIMEOUT_MS, formatDateISO } from '@windline/common';
 import type { ForecastSummary, WindImpactData } from '@windline/entities';
+import { createApiHeaders } from './api-headers';
 
 interface CreateForecastResponse {
   requestId: string;
@@ -58,14 +58,7 @@ export class WeatherApiService {
   }
 
   private getHeaders(contentType?: string): Record<string, string> {
-    const headers: Record<string, string> = {};
-    if (contentType) {
-      headers['Content-Type'] = contentType;
-    }
-    if (this.apiSecretKey) {
-      headers['X-API-Key'] = this.apiSecretKey;
-    }
-    return headers;
+    return createApiHeaders(this.apiSecretKey, contentType);
   }
 
   async createForecastRequest(

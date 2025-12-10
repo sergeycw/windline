@@ -1,7 +1,12 @@
 import { RoutePoint } from './gpx-parser.interface';
 
-const toRad = (deg: number): number => (deg * Math.PI) / 180;
+export const toRad = (deg: number): number => (deg * Math.PI) / 180;
 const toDeg = (rad: number): number => (rad * 180) / Math.PI;
+
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+}
 
 /**
  * Haversine formula - calculates the great-circle distance between two points on a sphere.
@@ -13,7 +18,7 @@ const toDeg = (rad: number): number => (rad * 180) / Math.PI;
  *
  * @returns Distance in meters
  */
-export function haversine(p1: RoutePoint, p2: RoutePoint): number {
+export function haversine(p1: GeoPoint, p2: GeoPoint): number {
   const R = 6371000;
 
   const dLat = toRad(p2.lat - p1.lat);
@@ -26,6 +31,10 @@ export function haversine(p1: RoutePoint, p2: RoutePoint): number {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+export function haversineKm(p1: GeoPoint, p2: GeoPoint): number {
+  return haversine(p1, p2) / 1000;
+}
+
 /**
  * Initial bearing (forward azimuth) - calculates the direction from one point to another.
  *
@@ -33,7 +42,7 @@ export function haversine(p1: RoutePoint, p2: RoutePoint): number {
  *
  * @returns Bearing in degrees (0-360, where 0 = North, 90 = East, 180 = South, 270 = West)
  */
-export function calculateBearing(from: RoutePoint, to: RoutePoint): number {
+export function calculateBearing(from: GeoPoint, to: GeoPoint): number {
   const lat1 = toRad(from.lat);
   const lat2 = toRad(to.lat);
   const dLon = toRad(to.lon - from.lon);

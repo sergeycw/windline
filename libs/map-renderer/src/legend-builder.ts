@@ -1,19 +1,22 @@
 import type { ForecastRenderData, RouteRenderData } from './map-renderer.types'
 import type { ForecastSummary, WindImpactData } from '@windline/entities'
 
-const CARD_PADDING = 16
-const CARD_PADDING_X = 24
-const BORDER_RADIUS = 12
-const LINE_HEIGHT = 22
-const DATE_SIZE = 18
-const TEXT_SIZE = 13
+const CARD_PADDING = 80
+const CARD_PADDING_X = 40
+const CARD_MARGIN_X = 24
+const CARD_MARGIN_BOTTOM = 24
+const BORDER_RADIUS = 24
+const LINE_HEIGHT = 100
+const DATE_SIZE = 48
+const TEXT_SIZE = 32
 
-const BG_COLOR = 'rgba(255, 255, 255, 0.95)'
-const SHADOW_COLOR = 'rgba(0, 0, 0, 0.12)'
+const BG_COLOR = 'rgba(255, 255, 255, 0.98)'
 const TEXT_PRIMARY = '#111827'
 const TEXT_SECONDARY = '#374151'
-const TEXT_MUTED = '#4B5563'
-export const SHADOW_MARGIN = 16
+const TEXT_MUTED = '#6B7280'
+
+export const LEGEND_MARGIN_X = CARD_MARGIN_X
+export const LEGEND_MARGIN_BOTTOM = CARD_MARGIN_BOTTOM
 
 export function createLegendCardSvg(
   route: RouteRenderData,
@@ -57,26 +60,27 @@ export function createLegendCardSvg(
 
   const contentHeight = lines.length * LINE_HEIGHT
   const cardHeight = contentHeight + CARD_PADDING * 2
+  const cardWidth = mapWidth - CARD_MARGIN_X * 2
 
-  let textY = SHADOW_MARGIN + CARD_PADDING + LINE_HEIGHT - 4
+  let textY = CARD_PADDING + LINE_HEIGHT - 4
   const textElements = lines
     .map((line) => {
-      const element = `<text x="${CARD_PADDING_X}" y="${textY}" font-family="Arial, sans-serif" font-size="${line.size}" font-weight="${line.bold ? 'bold' : 'normal'}" fill="${line.color}">${line.text}</text>`
+      const element = `<text x="${CARD_MARGIN_X + CARD_PADDING_X}" y="${textY}" font-family="Arial, sans-serif" font-size="${line.size}" font-weight="${line.bold ? 'bold' : 'normal'}" fill="${line.color}">${line.text}</text>`
       textY += LINE_HEIGHT
       return element
     })
     .join('\n  ')
 
   const svgWidth = mapWidth
-  const svgHeight = cardHeight + SHADOW_MARGIN
+  const svgHeight = cardHeight
 
   const svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="shadow" x="0" y="-50%" width="100%" height="150%">
-      <feDropShadow dx="0" dy="-2" stdDeviation="4" flood-color="${SHADOW_COLOR}"/>
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="8" flood-color="rgba(0,0,0,0.15)"/>
     </filter>
   </defs>
-  <rect x="0" y="${SHADOW_MARGIN}" width="${mapWidth}" height="${cardHeight}" fill="${BG_COLOR}" filter="url(#shadow)"/>
+  <rect x="${CARD_MARGIN_X}" y="0" width="${cardWidth}" height="${cardHeight}" rx="${BORDER_RADIUS}" ry="${BORDER_RADIUS}" fill="${BG_COLOR}" filter="url(#cardShadow)"/>
   ${textElements}
 </svg>`
 
@@ -86,7 +90,7 @@ export function createLegendCardSvg(
 export function getLegendCardHeight(forecast: ForecastRenderData): number {
   const lineCount = forecast.summary.precipitationProbabilityMax > 0 ? 4 : 3
   const contentHeight = lineCount * LINE_HEIGHT
-  return contentHeight + CARD_PADDING * 2 + SHADOW_MARGIN
+  return contentHeight + CARD_PADDING * 2
 }
 
 function formatDatePrimary(dateStr: string, startHour: number): string {
@@ -155,12 +159,4 @@ function formatDuration(hours: number | null | undefined): string | null {
 function formatElevation(meters: number | null | undefined): string | null {
   if (!meters || meters === 0) return null
   return `↑${meters}m`
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }

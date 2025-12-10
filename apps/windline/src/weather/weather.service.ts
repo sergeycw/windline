@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -20,12 +20,18 @@ import {
   calculateWindImpact,
 } from '@windline/weather';
 import type { RoutePoint } from '@windline/gpx';
-import { estimateRouteTime } from '@windline/gpx';
+import { estimateRouteTime, haversineKm, calculateBearing } from '@windline/gpx';
 import { Route, ForecastRequest, ForecastSummary } from '@windline/entities';
 import { sha256, CACHE_TTL_MS } from '@windline/common';
 import { MAP_RENDERER, type MapRendererService, type RenderMapResult, type WindMarkerData } from '@windline/map-renderer';
 import { QUEUE_WEATHER_FETCH } from '@windline/queue-jobs';
 import { ForecastRequestDto } from './dto/forecast-request.dto';
+
+const WIND_MARKER_CONFIG = {
+  DISTANCE_THRESHOLDS: [80, 30, 10] as const,
+  MAX_MARKERS: [12, 8, 6, 4] as const,
+  MIN_DISTANCES: [8, 5, 3, 2] as const,
+};
 
 export interface ProcessForecastResult {
   forecastRequest: ForecastRequest;
@@ -378,7 +384,7 @@ export class WeatherService {
 
   async renderForecastMap(route: Route, forecastRequest: ForecastRequest): Promise<RenderMapResult> {
     if (!forecastRequest.summary || !forecastRequest.windImpact) {
-      throw new Error('Forecast data not available');
+      throw new BadRequestException('Forecast data not available');
     }
 
     const windMarkers = this.prepareWindMarkers(route, forecastRequest);
@@ -430,17 +436,19 @@ export class WeatherService {
   }
 
   private calculateMaxMarkers(distanceKm: number): number {
-    if (distanceKm >= 80) return 12
-    if (distanceKm >= 30) return 8
-    if (distanceKm >= 10) return 6
-    return 4
+    const { DISTANCE_THRESHOLDS, MAX_MARKERS } = WIND_MARKER_CONFIG
+    for (let i = 0; i < DISTANCE_THRESHOLDS.length; i++) {
+      if (distanceKm >= DISTANCE_THRESHOLDS[i]) return MAX_MARKERS[i]
+    }
+    return MAX_MARKERS[MAX_MARKERS.length - 1]
   }
 
   private calculateMinDistanceBetweenMarkers(distanceKm: number): number {
-    if (distanceKm >= 80) return 8
-    if (distanceKm >= 30) return 5
-    if (distanceKm >= 10) return 3
-    return 2
+    const { DISTANCE_THRESHOLDS, MIN_DISTANCES } = WIND_MARKER_CONFIG
+    for (let i = 0; i < DISTANCE_THRESHOLDS.length; i++) {
+      if (distanceKm >= DISTANCE_THRESHOLDS[i]) return MIN_DISTANCES[i]
+    }
+    return MIN_DISTANCES[MIN_DISTANCES.length - 1]
   }
 
   private filterByMinDistance(
@@ -453,7 +461,7 @@ export class WeatherService {
 
     for (let i = 1; i < points.length; i++) {
       const lastAccepted = result[result.length - 1]
-      const distance = this.haversineDistance(lastAccepted, points[i])
+      const distance = haversineKm(lastAccepted, points[i])
 
       if (distance >= minDistanceKm) {
         result.push(points[i])
@@ -461,24 +469,6 @@ export class WeatherService {
     }
 
     return result
-  }
-
-  private haversineDistance(
-    p1: { lat: number; lon: number },
-    p2: { lat: number; lon: number },
-  ): number {
-    const R = 6371
-    const dLat = ((p2.lat - p1.lat) * Math.PI) / 180
-    const dLon = ((p2.lon - p1.lon) * Math.PI) / 180
-    const lat1 = (p1.lat * Math.PI) / 180
-    const lat2 = (p2.lat * Math.PI) / 180
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-
-    return R * c
   }
 
   private samplePolylinePointsWithBearing(
@@ -509,27 +499,12 @@ export class WeatherService {
       const nextIndex = Math.min(index + 1, points.length - 1)
       const nextPoint = points[nextIndex]
 
-      const bearing = index === nextIndex ? (result.length > 0 ? result[result.length - 1].bearing : 0) : this.calculateBearing(point, nextPoint)
+      const bearing = index === nextIndex ? (result.length > 0 ? result[result.length - 1].bearing : 0) : calculateBearing(point, nextPoint)
 
       result.push({ lat: point.lat, lon: point.lon, bearing })
     }
 
     return result
-  }
-
-  private calculateBearing(
-    from: { lat: number; lon: number },
-    to: { lat: number; lon: number },
-  ): number {
-    const lat1 = (from.lat * Math.PI) / 180
-    const lat2 = (to.lat * Math.PI) / 180
-    const dLon = ((to.lon - from.lon) * Math.PI) / 180
-
-    const y = Math.sin(dLon) * Math.cos(lat2)
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
-
-    const bearing = (Math.atan2(y, x) * 180) / Math.PI
-    return (bearing + 360) % 360
   }
 
   private calculateAverageWindDirection(forecastRequest: ForecastRequest): number {
@@ -594,7 +569,7 @@ export class WeatherService {
     });
 
     if (!forecastRequest) {
-      throw new Error(`Forecast request ${requestId} not found`);
+      throw new NotFoundException(`Forecast request ${requestId} not found`);
     }
 
     const route = forecastRequest.route;
@@ -640,11 +615,11 @@ export class WeatherService {
     });
 
     if (!forecastRequest) {
-      throw new Error(`Forecast request ${requestId} not found`);
+      throw new NotFoundException(`Forecast request ${requestId} not found`);
     }
 
     if (!forecastRequest.summary || !forecastRequest.windImpact) {
-      throw new Error(`Forecast data not available for request ${requestId}`);
+      throw new BadRequestException(`Forecast data not available for request ${requestId}`);
     }
 
     const route = forecastRequest.route;
